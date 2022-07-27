@@ -8,7 +8,7 @@ from telegram.ext import (CallbackContext, CommandHandler, Updater, MessageHandl
 from api_functions import user_auth
 from bot.models import Presentation, Question, Profile
 
-PROGRAMM, PRESENTATION, QUESTION, SAVE_QUESTION = range(4)
+PROGRAMM, PRESENTATION, QUESTION, SAVE_QUESTION, ANSWER = range(5)
 
 
 def start(update: Update, context: CallbackContext) -> None:
@@ -17,7 +17,7 @@ def start(update: Update, context: CallbackContext) -> None:
     user_profile = user_auth(user)
     keys = [KeyboardButton('Задать вопрос'), KeyboardButton('Программа')]
     if user_profile.is_speaker:
-        keys.append(KeyboardButton('Ответить нам вопрос'))
+        keys.append(KeyboardButton('Ответить на вопрос'))
     reply_markup = ReplyKeyboardMarkup(
         keyboard=[keys], resize_keyboard=True, one_time_keyboard=True)
 
@@ -46,7 +46,7 @@ def get_presentation(update, context):
     context.user_data['presentation'] = presentation
     text = textwrap.dedent(
         f'''
-        Название презентации: 
+        Название презентации:
         {presentation}
         
         Описание презентации:
@@ -100,6 +100,34 @@ def save_question(update, context):
     return QUESTION
 
 
+def new_question_from_the_speaker(update, context):
+    speaker_id = update.message.chat.id
+    question = get_questions_from_the_speaker(speaker_id)
+    context.user_data['question'] = question
+    buttons = [KeyboardButton('Пропустить'), KeyboardButton('Главное меню')]
+    reply_markup = ReplyKeyboardMarkup(
+        keyboard=[buttons],
+        resize_keyboard=True,
+        one_time_keyboard=True)
+    update.message.reply_text(
+        question.text,
+        reply_markup=reply_markup
+    )
+    return ANSWER
+
+
+def get_questions_from_the_speaker(speaker_id: str) -> list:
+    speaker = Profile.objects.get(telegram_id=speaker_id)
+    presantation = Presentation.objects.get(speaker=speaker)
+    question = Question.objects.filter(presentation=presantation).filter(is_active=True)[0]
+    return question
+
+
+def answer_the_question(update, context):
+    listener_id = context.user_data['question'].listener.telegram_id
+    context.bot.send_message(chat_id=listener_id, text=update.message.text)
+
+
 def help_command(update: Update, context: CallbackContext) -> None:
     """Send a message when the command /help is issued."""
     update.message.reply_text('SOS!')
@@ -118,7 +146,6 @@ def main() -> None:
             CommandHandler('start', start, filters=Filters.regex('^.{7,99}$')),
             CommandHandler('start', start),
         ],
-
         states={
             PROGRAMM: [
                 CommandHandler("start", start, filters=Filters.regex('^.{7,20}$')),
@@ -137,13 +164,32 @@ def main() -> None:
                 MessageHandler(Filters.text, save_question),
                 MessageHandler(Filters.regex('^Программа$'), chose_presentation),
             ],
+
         },
         fallbacks=[CommandHandler('start', start), MessageHandler(Filters.regex('^Начать$'), start)],
         per_user=True,
         per_chat=True,
         allow_reentry=True
     )
+
+    answer_to_questions_handler = ConversationHandler(
+        entry_points=[
+            MessageHandler(Filters.regex('^Ответить на вопрос$'), new_question_from_the_speaker)
+        ],
+        states={
+            ANSWER: [
+                MessageHandler(Filters.text, answer_the_question)
+            ],
+
+        },
+        fallbacks=[],
+        per_user=True,
+        per_chat=True,
+        allow_reentry=True
+    )
+
     dispatcher.add_handler(conv_handler)
+    dispatcher.add_handler(answer_to_questions_handler)
     dispatcher.add_handler(CommandHandler("help", help_command))
 
     updater.start_polling()
