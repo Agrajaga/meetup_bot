@@ -18,7 +18,8 @@ MAIN_MENU_CHOICE, \
     EVENT_GROUP_CHOICE, \
     EVENT_CHOICE, \
     QUESTION, \
-    SAVE_QUESTION = range(5)
+    SAVE_QUESTION, \
+    ANSWER = range(6)
 
 MAIN_MENU_BUTTON_CAPTION = 'Главное меню'
 BACK_BUTTON_CAPTION = 'Назад'
@@ -128,8 +129,35 @@ def save_question(update, context):
     return QUESTION
 
 
-def answer_question(update: Update, context: CallbackContext) -> int:
-    pass
+def new_question_from_the_speaker(update, context):
+    speaker_id = update.message.chat.id
+    question = get_questions_from_the_speaker(speaker_id)
+    context.user_data['question'] = question
+    buttons = [
+        KeyboardButton('Пропустить'), 
+        KeyboardButton(MAIN_MENU_BUTTON_CAPTION),
+    ]
+    reply_markup = ReplyKeyboardMarkup(
+        keyboard=[buttons],
+        resize_keyboard=True,
+        one_time_keyboard=True)
+    update.message.reply_text(
+        question.text,
+        reply_markup=reply_markup
+    )
+    return ANSWER
+
+
+def get_questions_from_the_speaker(speaker_id: str) -> list:
+    speaker = Profile.objects.get(telegram_id=speaker_id)
+    presentation = Event.objects.get(speaker=speaker)
+    question = Question.objects.filter(presentation=presentation).filter(is_active=True)[0]
+    return question
+
+
+def answer_the_question(update, context):
+    listener_id = context.user_data['question'].listener.telegram_id
+    context.bot.send_message(chat_id=listener_id, text=update.message.text)
 
 
 def help_command(update: Update, context: CallbackContext) -> None:
@@ -150,7 +178,6 @@ def main() -> None:
             CommandHandler('start', start, filters=Filters.regex('^.{7,99}$')),
             CommandHandler('start', start),
         ],
-
         states={
             MAIN_MENU_CHOICE: [
                 MessageHandler(Filters.regex('^Программа$'),
@@ -158,7 +185,7 @@ def main() -> None:
                 MessageHandler(Filters.regex('^Задать вопрос$'),
                                ask_question),
                 MessageHandler(Filters.regex('^Ответить на вопрос$'),
-                               answer_question),
+                               new_question_from_the_speaker),
             ],
             EVENT_GROUP_CHOICE: [
                 MessageHandler(Filters.regex(f'^{MAIN_MENU_BUTTON_CAPTION}$'),
@@ -180,6 +207,9 @@ def main() -> None:
             SAVE_QUESTION: [
                 MessageHandler(Filters.text, save_question),
             ],
+            ANSWER: [
+                MessageHandler(Filters.text, answer_the_question)
+            ],
         },
         fallbacks=[CommandHandler('start', start), MessageHandler(
             Filters.regex('^Начать$'), start)],
@@ -187,6 +217,7 @@ def main() -> None:
         per_chat=True,
         allow_reentry=True
     )
+    
     dispatcher.add_handler(conv_handler)
     dispatcher.add_handler(CommandHandler("help", help_command))
 
