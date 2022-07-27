@@ -12,7 +12,8 @@ class Profile(models.Model):
 
 
 class Presentation(models.Model):
-    speaker = models.ForeignKey(Profile, on_delete=models.CASCADE)
+    speaker = models.ForeignKey(
+        Profile, on_delete=models.CASCADE, related_name="presentations")
     title = models.CharField('название', max_length=250)
     description = models.TextField('описание')
 
