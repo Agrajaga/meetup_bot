@@ -1,75 +1,100 @@
 import os
 import textwrap
 
+import django
+from django.core.exceptions import ObjectDoesNotExist
 from dotenv import load_dotenv
-from telegram import KeyboardButton, ReplyKeyboardMarkup, Update, ReplyKeyboardRemove
-from telegram.ext import (CallbackContext, CommandHandler,
-                          Updater, MessageHandler, Filters, ConversationHandler)
+from telegram import (KeyboardButton, ReplyKeyboardMarkup, ReplyKeyboardRemove,
+                      Update)
+from telegram.ext import (CallbackContext, CommandHandler, ConversationHandler,
+                          Filters, MessageHandler, Updater)
 
-from api_functions import user_auth
-from bot.models import Presentation, Question, Profile
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'meetup.settings')
+django.setup()
 
-PROGRAMM, PRESENTATION, QUESTION, SAVE_QUESTION = range(4)
+from bot.models import Event, EventGroup, Profile, Question
+
+MAIN_MENU_CHOICE, \
+    EVENT_GROUP_CHOICE, \
+    EVENT_CHOICE, \
+    QUESTION, \
+    SAVE_QUESTION = range(5)
+
+MAIN_MENU_BUTTON_CAPTION = 'Главное меню'
+BACK_BUTTON_CAPTION = 'Назад'
 
 
-def start(update: Update, context: CallbackContext) -> None:
+def start(update: Update, context: CallbackContext) -> int:
     """Send a message when the command /start is issued."""
-    user = update.effective_user
-    user_profile = user_auth(user)
-    keys = [KeyboardButton('Задать вопрос'), KeyboardButton('Программа')]
+    tg_user = update.effective_user
+    user_profile, _ = Profile.objects.get_or_create(
+        telegram_id=tg_user['id'],
+        defaults={
+            'name': tg_user['first_name'],
+            'telegram_username': tg_user['username'],
+        })
+
+    keyboard = [[KeyboardButton('Программа'), KeyboardButton('Задать вопрос')]]
     if user_profile.is_speaker:
-        keys.append(KeyboardButton('Ответить на вопрос'))
-    reply_markup = ReplyKeyboardMarkup(
-        keyboard=[keys], resize_keyboard=True, one_time_keyboard=True)
+        keyboard.append([KeyboardButton('Ответить на вопрос')])
+    markup = ReplyKeyboardMarkup(
+        keyboard=keyboard, resize_keyboard=True, one_time_keyboard=True)
 
     update.message.reply_text(
-        f'Привет {user_profile.name}', reply_markup=reply_markup)
+        f'Привет {user_profile.name}', reply_markup=markup)
 
-    return PROGRAMM
-
-
-def chose_presentation(update, context):
-    text = 'Выберите презентацию'
-    presentations = Presentation.objects.all()
-    buttons = [KeyboardButton(presentation.title)
-               for presentation in presentations]
-    reply_markup = ReplyKeyboardMarkup(
-        keyboard=[buttons], resize_keyboard=True, one_time_keyboard=True)
-    update.message.reply_text(
-        text,
-        reply_markup=reply_markup
-    )
-
-    return PRESENTATION
+    return MAIN_MENU_CHOICE
 
 
-def get_presentation(update, context):
-    presentation = Presentation.objects.get(title=update.message.text)
-    context.user_data['presentation'] = presentation
+def choose_event_group(update: Update, context: CallbackContext) -> int:
+    """Ask the user to select an event group"""
+    groups = EventGroup.objects.all()
+    buttons = [[KeyboardButton(group.title)] for group in groups]
+    buttons.append([KeyboardButton(MAIN_MENU_BUTTON_CAPTION)])
+    markup = ReplyKeyboardMarkup(
+        keyboard=buttons, resize_keyboard=True, one_time_keyboard=True)
+    update.message.reply_text('Какая секция?', reply_markup=markup)
+
+    return EVENT_GROUP_CHOICE
+
+
+def choose_event(update: Update, context: CallbackContext) -> int:
+    """Ask the user to select an event"""
+    events = Event.objects.filter(event_group__title=update.message.text)
+    if not events:
+        return start(update, context)
+    context.chat_data['events'] = events
+    buttons = [[KeyboardButton(event.title)] for event in events]
+    buttons.append([KeyboardButton(BACK_BUTTON_CAPTION)])
+    markup = ReplyKeyboardMarkup(
+        keyboard=buttons, resize_keyboard=True)
+    update.message.reply_text('Какое мероприятие?', reply_markup=markup)
+
+    return EVENT_CHOICE
+
+
+def show_event(update: Update, context: CallbackContext) -> int:
+    """Show event description"""
+    events = context.chat_data['events']
+    try:
+        event = events.get(title=update.message.text)
+    except ObjectDoesNotExist:
+        return start(update, context)
     text = textwrap.dedent(
         f'''
         Название презентации: 
-        {presentation}
+        {event}
         
         Описание презентации:
-        {presentation.description}
+        {event.description}
         
         Спикер:
-        {presentation.speaker.name}
+        {event.speaker.name}
         '''
     )
-    buttons = [KeyboardButton('Задать вопрос'), KeyboardButton('Программа')]
-    reply_markup = ReplyKeyboardMarkup(
-        keyboard=[buttons],
-        resize_keyboard=True,
-        one_time_keyboard=True
-    )
-    update.message.reply_text(
-        text,
-        reply_markup=reply_markup
-    )
+    update.message.reply_text(text)
 
-    return QUESTION
+    return EVENT_CHOICE
 
 
 def ask_question(update, context):
@@ -82,10 +107,10 @@ def ask_question(update, context):
 
 
 def save_question(update, context):
-    print(context.user_data['presentation'])
+    print(context.user_data['event'])
     text = 'Ваш вопрос направлен спикеру'
     Question.objects.get_or_create(
-        presentation=context.user_data['presentation'],
+        event=context.user_data['event'],
         text=update.message.text,
         listener=Profile.objects.get(
             telegram_id=context.user_data['questioner_id'])
@@ -101,6 +126,10 @@ def save_question(update, context):
     )
 
     return QUESTION
+
+
+def answer_question(update: Update, context: CallbackContext) -> int:
+    pass
 
 
 def help_command(update: Update, context: CallbackContext) -> None:
@@ -123,17 +152,25 @@ def main() -> None:
         ],
 
         states={
-            PROGRAMM: [
-                CommandHandler(
-                    "start", start, filters=Filters.regex('^.{7,20}$')),
+            MAIN_MENU_CHOICE: [
                 MessageHandler(Filters.regex('^Программа$'),
-                               chose_presentation),
+                               choose_event_group),
+                MessageHandler(Filters.regex('^Задать вопрос$'),
+                               ask_question),
+                MessageHandler(Filters.regex('^Ответить на вопрос$'),
+                               answer_question),
             ],
-            PRESENTATION: [
-                MessageHandler(Filters.regex('^.{1,99}$'), get_presentation),
-                MessageHandler(Filters.text, get_presentation),
-                MessageHandler(Filters.regex('^Программа$'),
-                               chose_presentation),
+            EVENT_GROUP_CHOICE: [
+                MessageHandler(Filters.regex(f'^{MAIN_MENU_BUTTON_CAPTION}$'),
+                               start),
+                MessageHandler(Filters.text,
+                               choose_event),
+            ],
+            EVENT_CHOICE: [
+                MessageHandler(Filters.regex(f'^{BACK_BUTTON_CAPTION}$'),
+                               choose_event_group),
+                MessageHandler(Filters.text,
+                               show_event),
             ],
             QUESTION: [
                 MessageHandler(Filters.regex('^Задать вопрос$'), ask_question),
@@ -142,8 +179,6 @@ def main() -> None:
             ],
             SAVE_QUESTION: [
                 MessageHandler(Filters.text, save_question),
-                MessageHandler(Filters.regex('^Программа$'),
-                               chose_presentation),
             ],
         },
         fallbacks=[CommandHandler('start', start), MessageHandler(
