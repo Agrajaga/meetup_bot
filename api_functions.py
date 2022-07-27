@@ -1,7 +1,6 @@
 import os
 
 import django
-from django.db import models
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'meetup.settings')
 django.setup()
