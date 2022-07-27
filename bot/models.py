@@ -16,6 +16,9 @@ class Presentation(models.Model):
     title = models.CharField('название', max_length=250)
     description = models.TextField('описание')
 
+    def __str__(self) -> str:
+        return f'{self.title}'
+
 
 class Question(models.Model):
     presentation = models.ForeignKey(
@@ -23,3 +26,6 @@ class Question(models.Model):
     text = models.TextField('текст вопроса')
     listener = models.ForeignKey(Profile, on_delete=models.CASCADE)
     is_active = models.BooleanField('актуальный', default=True)
+
+    def __str__(self) -> str:
+        return f'{self.presentation} - {self.listener}'
