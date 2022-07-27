@@ -11,9 +11,9 @@ def start(update: Update, context: CallbackContext) -> None:
     """Send a message when the command /start is issued."""
     user = update.effective_user
     user_profile = user_auth(user)
-    keys = [KeyboardButton('Меню участника')]
+    keys = [KeyboardButton('Задать вопрос'), KeyboardButton('Программа')]
     if user_profile.is_speaker:
-        keys.append(KeyboardButton('Меню докладчика'))
+        keys.append(KeyboardButton('Ответить нам вопрос'))
     reply_markup = ReplyKeyboardMarkup(
         keyboard=[keys], resize_keyboard=True, one_time_keyboard=True)
 
