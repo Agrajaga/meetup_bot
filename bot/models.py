@@ -38,6 +38,7 @@ class Question(models.Model):
         Event, on_delete=models.CASCADE, related_name='questions')
     text = models.TextField('текст вопроса')
     listener = models.ForeignKey(Profile, on_delete=models.CASCADE)
+    answer = models.TextField('ответ на вопрос')
     is_active = models.BooleanField('актуальный', default=True)
 
     def __str__(self) -> str:
