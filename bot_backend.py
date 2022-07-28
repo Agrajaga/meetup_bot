@@ -175,7 +175,6 @@ def main() -> None:
 
     conv_handler = ConversationHandler(
         entry_points=[
-            CommandHandler('start', start, filters=Filters.regex('^.{7,99}$')),
             CommandHandler('start', start),
         ],
         states={
@@ -211,8 +210,7 @@ def main() -> None:
                 MessageHandler(Filters.text, answer_the_question)
             ],
         },
-        fallbacks=[CommandHandler('start', start), MessageHandler(
-            Filters.regex('^Начать$'), start)],
+        fallbacks=[CommandHandler('start', start)],
         per_user=True,
         per_chat=True,
         allow_reentry=True
