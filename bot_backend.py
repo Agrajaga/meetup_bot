@@ -3,6 +3,7 @@ import textwrap
 
 import django
 from django.core.exceptions import ObjectDoesNotExist
+from functools import partial
 from dotenv import load_dotenv
 from telegram import (KeyboardButton, ReplyKeyboardMarkup, ReplyKeyboardRemove,
                       Update)
@@ -19,7 +20,8 @@ MAIN_MENU_CHOICE, \
     EVENT_CHOICE, \
     QUESTION, \
     SAVE_QUESTION, \
-    ANSWER = range(6)
+    ANSWER, \
+    NEXT_QUESTION = range(7)
 
 MAIN_MENU_BUTTON_CAPTION = 'Главное меню'
 BACK_BUTTON_CAPTION = 'Назад'
@@ -28,7 +30,7 @@ BACK_BUTTON_CAPTION = 'Назад'
 def start(update: Update, context: CallbackContext) -> int:
     """Send a message when the command /start is issued."""
     tg_user = update.effective_user
-    user_profile, _ = Profile.objects.get_or_create(
+    user_profile, created = Profile.objects.get_or_create(
         telegram_id=tg_user['id'],
         defaults={
             'name': tg_user['first_name'],
@@ -40,9 +42,12 @@ def start(update: Update, context: CallbackContext) -> int:
         keyboard.append([KeyboardButton('Ответить на вопрос')])
     markup = ReplyKeyboardMarkup(
         keyboard=keyboard, resize_keyboard=True, one_time_keyboard=True)
-
-    update.message.reply_text(
-        f'Привет {user_profile.name}', reply_markup=markup)
+    if not created:
+        update.message.reply_text(
+            'Вы находитесь в главном меню', reply_markup=markup)
+    else:
+        update.message.reply_text(
+            f'Привет {user_profile.name}', reply_markup=markup)
 
     return MAIN_MENU_CHOICE
 
@@ -83,12 +88,12 @@ def show_event(update: Update, context: CallbackContext) -> int:
         return start(update, context)
     text = textwrap.dedent(
         f'''
-        Название презентации: 
+        Название презентации:
         {event}
-        
+
         Описание презентации:
         {event.description}
-        
+
         Спикер:
         {event.speaker.name}
         '''
@@ -129,35 +134,71 @@ def save_question(update, context):
     return QUESTION
 
 
-def new_question_from_the_speaker(update, context):
+def new_question_from_the_speaker(update, context, next=False):
     speaker_id = update.message.chat.id
-    question = get_questions_from_the_speaker(speaker_id)
-    context.user_data['question'] = question
     buttons = [
-        KeyboardButton('Пропустить'), 
+        KeyboardButton('Следующий вопрос'),
         KeyboardButton(MAIN_MENU_BUTTON_CAPTION),
     ]
     reply_markup = ReplyKeyboardMarkup(
         keyboard=[buttons],
         resize_keyboard=True,
         one_time_keyboard=True)
+    if not next:
+        result_request, question = get_questions_from_the_speaker(speaker_id)
+        context.user_data['question_number'] = 0
+        if not question:
+            message_text = "Вопросов нет"
+        else:
+            context.user_data['question'] = question
+            message_text = question.text
+    else:
+        question_number = context.user_data['question_number'] + 1
+        result_request, question = get_questions_from_the_speaker(speaker_id, question_number)
+        if result_request:
+            context.user_data['question_number'] += 1
+        else:
+            context.user_data['question_number'] = 0
+        if not question:
+            message_text = "Вопросов нет"
+        else:
+            context.user_data['question'] = question
+            message_text = question.text
     update.message.reply_text(
-        question.text,
+        message_text,
         reply_markup=reply_markup
     )
+
     return ANSWER
 
 
-def get_questions_from_the_speaker(speaker_id: str) -> list:
+def get_questions_from_the_speaker(speaker_id: str, question_number=0):
     speaker = Profile.objects.get(telegram_id=speaker_id)
     presentation = Presentation.objects.get(speaker=speaker)
-    question = Question.objects.filter(presentation=presentation).filter(is_active=True)[0]
-    return question
+    try:
+        question = Question.objects.filter(presentation=presentation).filter(is_active=True)[question_number]
+        return True, question
+    except IndexError:
+        question = Question.objects.filter(presentation=presentation).filter(is_active=True)
+        if len(question) > 0:
+            return False, question[0]
+        else:
+            return False, False
 
 
 def answer_the_question(update, context):
-    listener_id = context.user_data['question'].listener.telegram_id
-    context.bot.send_message(chat_id=listener_id, text=update.message.text)
+    question = context.user_data['question']
+    answer = update.message.text
+    listener_id = question.listener.telegram_id
+
+    question.answer = answer
+    question.is_active = False
+    question.save()
+
+    context.bot.send_message(chat_id=listener_id, text=answer)
+    update.message.reply_text("Ответ отправлен. Нажмите на кнопку 'Следующий вопрос'")
+
+    return NEXT_QUESTION
 
 
 def help_command(update: Update, context: CallbackContext) -> None:
@@ -175,6 +216,7 @@ def main() -> None:
 
     conv_handler = ConversationHandler(
         entry_points=[
+            CommandHandler('start', start, filters=Filters.regex('^.{7,99}$')),
             CommandHandler('start', start),
         ],
         states={
@@ -207,10 +249,18 @@ def main() -> None:
                 MessageHandler(Filters.text, save_question),
             ],
             ANSWER: [
+                MessageHandler(Filters.regex('^Главное меню$'), start),
+                MessageHandler(Filters.regex('^Следующий вопрос$'),partial(new_question_from_the_speaker, next=True)),
                 MessageHandler(Filters.text, answer_the_question)
             ],
+            NEXT_QUESTION: [
+                MessageHandler(Filters.regex('^Следующий вопрос$'), partial(new_question_from_the_speaker, next=True)),
+            ]
         },
-        fallbacks=[CommandHandler('start', start)],
+        fallbacks=[
+            CommandHandler('start', start),
+            MessageHandler(Filters.regex('^Начать$'), start),
+            ],
         per_user=True,
         per_chat=True,
         allow_reentry=True
