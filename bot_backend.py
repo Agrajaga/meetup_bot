@@ -12,7 +12,7 @@ from telegram.ext import (CallbackContext, CommandHandler, ConversationHandler,
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'meetup.settings')
 django.setup()
 
-from bot.models import Event, EventGroup, Profile, Question
+from bot.models import Event, EventGroup, Profile, Question, Presentation
 
 MAIN_MENU_CHOICE, \
     EVENT_GROUP_CHOICE, \
@@ -150,7 +150,7 @@ def new_question_from_the_speaker(update, context):
 
 def get_questions_from_the_speaker(speaker_id: str) -> list:
     speaker = Profile.objects.get(telegram_id=speaker_id)
-    presentation = Event.objects.get(speaker=speaker)
+    presentation = Presentation.objects.get(speaker=speaker)
     question = Question.objects.filter(presentation=presentation).filter(is_active=True)[0]
     return question
 
@@ -217,7 +217,7 @@ def main() -> None:
         per_chat=True,
         allow_reentry=True
     )
-    
+
     dispatcher.add_handler(conv_handler)
     dispatcher.add_handler(CommandHandler("help", help_command))
 
