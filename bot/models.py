@@ -23,17 +23,19 @@ class Event(models.Model):
     time_from = models.TimeField('время начала', null=True, blank=True)
     time_to = models.TimeField('время окончания', null=True, blank=True)
     event_group = models.ForeignKey(
-        EventGroup, on_delete=models.CASCADE, related_name="events")
+        EventGroup, on_delete=models.CASCADE, related_name='events')
 
     def __str__(self) -> str:
         return f'{self.time_from:%H:%M}-{self.time_to:%H:%M} {self.title}'
 
 
 class Presentation(models.Model):
+    event = models.ForeignKey(
+        Event, on_delete=models.CASCADE, related_name='presentations')
     speaker = models.ForeignKey(
         Profile,
         on_delete=models.CASCADE,
-        related_name="presentations",
+        related_name='presentations',
     )
     title = models.CharField('название', max_length=250)
     description = models.TextField('описание')
