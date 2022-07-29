@@ -49,7 +49,7 @@ class Question(models.Model):
         Presentation, on_delete=models.CASCADE, related_name='questions')
     text = models.TextField('текст вопроса')
     listener = models.ForeignKey(Profile, on_delete=models.CASCADE)
-    answer = models.TextField('ответ на вопрос')
+    answer = models.TextField('ответ на вопрос', blank=True)
     is_active = models.BooleanField('актуальный', default=True)
 
     def __str__(self) -> str:
