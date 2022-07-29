@@ -3,10 +3,10 @@ import os
 import django
 from functools import partial
 from dotenv import load_dotenv
-from telegram import (KeyboardButton, ReplyKeyboardMarkup, ReplyKeyboardRemove,
+from telegram import (KeyboardButton, LabeledPrice, ReplyKeyboardMarkup,
                       Update)
 from telegram.ext import (CallbackContext, CommandHandler, ConversationHandler,
-                          Filters, MessageHandler, Updater)
+                          Filters, MessageHandler, Updater, PreCheckoutQueryHandler)
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'meetup.settings')
 django.setup()
@@ -22,7 +22,9 @@ MAIN_MENU_CHOICE, \
     QUESTION, \
     SAVE_QUESTION, \
     ANSWER, \
-    NEXT_QUESTION = range(9)
+    NEXT_QUESTION, \
+    INPUT_DONATE, \
+    CHECK_PAYMENT = range(11)
 
 MAIN_MENU_BUTTON_CAPTION = 'Главное меню'
 BACK_BUTTON_CAPTION = 'Назад'
@@ -281,9 +283,56 @@ def help_command(update: Update, context: CallbackContext) -> None:
     update.message.reply_text('SOS!')
 
 
-def pay_donate(update: Update, context: CallbackContext):
-    update.message.reply_text('Пока не работает')
+def ask_donate_amount(update: Update, context: CallbackContext) -> int:
+    """Ask the user to enter the donation amount"""
+    buttons = [KeyboardButton(BACK_BUTTON_CAPTION)]
+    text = '💰💰💰 Укажите сумму доната в рублях (от 10 руб) 💰💰💰'
+    markup = ReplyKeyboardMarkup(
+        keyboard=[buttons],
+        resize_keyboard=True,
+        one_time_keyboard=True)
+    update.message.reply_text(text, reply_markup=markup)
+
+    return INPUT_DONATE
+
+
+def pay_donate(update: Update, context: CallbackContext) -> int:
+    """Sends an invoice."""
+    donate_amount = int(update.message.text)
+    chat_id = update.message.chat_id
+    title = "Донателло!"
+    description = "Поддержим проведение таких митапов"
+    payload = "Donate Meetup-BOT"
+    provider_token = os.getenv("TG_PAY_TOKEN")
+    currency = "RUB"
+    prices = [LabeledPrice("На развитие", donate_amount * 100)]
+
+    context.bot.send_invoice(
+        chat_id, title, description, payload, provider_token, currency, prices
+    )
+
+    return CHECK_PAYMENT
+
+
+def precheckout_callback(update: Update, context: CallbackContext) -> None:
+    """Answers the PreQecheckoutQuery"""
+    query = update.pre_checkout_query
+    if query.invoice_payload != 'Donate Meetup-BOT':
+        query.answer(ok=False, error_message="Что-то пошло не так...")
+    else:
+        query.answer(ok=True)
+
+
+def successful_payment(update: Update, context: CallbackContext) -> int:
+    """Confirms the successful payment."""
+    update.message.reply_text('💰💰💰 Спасибо за Вашу поддержку! 💰💰💰')
     return start(update, context)
+
+
+def unsuccessful_payment(update: Update, context: CallbackContext) -> int:
+    """Notify about failed payment."""
+    update.message.reply_text("Что-то пошло не так! Давайте попробуем еще раз")
+    return ask_donate_amount(update, context)
 
 
 def main() -> None:
@@ -293,6 +342,8 @@ def main() -> None:
 
     updater = Updater(tg_token)
     dispatcher = updater.dispatcher
+
+    precheckout_handler = PreCheckoutQueryHandler(precheckout_callback)
 
     conv_handler = ConversationHandler(
         entry_points=[
@@ -307,7 +358,7 @@ def main() -> None:
                 MessageHandler(Filters.regex('^Ответить на вопрос$'),
                                new_question_from_the_speaker),
                 MessageHandler(Filters.regex('^Задонатить$'),
-                               pay_donate),
+                               ask_donate_amount),
             ],
             EVENT_GROUP_CHOICE: [
                 MessageHandler(Filters.regex(f'^{MAIN_MENU_BUTTON_CAPTION}$'),
@@ -355,7 +406,18 @@ def main() -> None:
             NEXT_QUESTION: [
                 MessageHandler(Filters.regex('^Следующий вопрос$'),
                                partial(new_question_from_the_speaker, next=True)),
-            ]
+            ],
+            INPUT_DONATE: [
+                MessageHandler(Filters.regex('^\d$'), pay_donate),
+                MessageHandler(Filters.regex(f'^{BACK_BUTTON_CAPTION}$'),
+                               start),
+                MessageHandler(Filters.text | ~Filters.command,
+                               ask_donate_amount),
+            ],
+            CHECK_PAYMENT: [
+                MessageHandler(Filters.successful_payment, successful_payment),
+                MessageHandler(~Filters.successful_payment, unsuccessful_payment),
+            ],
         },
         fallbacks=[
             CommandHandler('start', start),
@@ -365,6 +427,7 @@ def main() -> None:
         allow_reentry=True
     )
 
+    dispatcher.add_handler(precheckout_handler)
     dispatcher.add_handler(conv_handler)
     dispatcher.add_handler(CommandHandler("help", help_command))
 
