@@ -58,13 +58,22 @@ def start(update: Update, context: CallbackContext) -> int:
 def choose_event_group(update: Update, context: CallbackContext) -> int:
     """Ask the user to select an event group"""
     groups = EventGroup.objects.all()
-    buttons = [[KeyboardButton(group.title) for group in groups]]
-    buttons.append([KeyboardButton(MAIN_MENU_BUTTON_CAPTION)])
+    buttons = [[KeyboardButton(group.title) for group in groups], [KeyboardButton(MAIN_MENU_BUTTON_CAPTION)]]
     markup = ReplyKeyboardMarkup(
         keyboard=buttons, resize_keyboard=True, one_time_keyboard=True)
     update.message.reply_text('Какая секция?', reply_markup=markup)
 
     return EVENT_GROUP_CHOICE
+
+
+def split_buttons(arr, size):
+    arrs = []
+    while len(arr) > size:
+        pice = arr[:size]
+        arrs.append(KeyboardButton(pice))
+        arr = arr[size:]
+    arrs.append(arr)
+    return arrs
 
 
 def choose_event(update: Update, context: CallbackContext) -> int:
@@ -116,10 +125,11 @@ def show_event(update: Update, context: CallbackContext) -> int:
 
 def choose_event_group_for_ask(update, context):
     groups = EventGroup.objects.all()
-    buttons = [[KeyboardButton(group.title)] for group in groups]
-    buttons.append([KeyboardButton(MAIN_MENU_BUTTON_CAPTION)])
+    group_titles = [group.title for group in groups]
+    divided_buttons = split_buttons(group_titles, 3)
+    divided_buttons.append([KeyboardButton(MAIN_MENU_BUTTON_CAPTION)])
     markup = ReplyKeyboardMarkup(
-        keyboard=buttons, resize_keyboard=True, one_time_keyboard=True)
+        keyboard=divided_buttons, resize_keyboard=True, one_time_keyboard=True)
     update.message.reply_text('Какая секция?', reply_markup=markup)
 
     return CHOOSE_EVENT_TIME
@@ -127,18 +137,16 @@ def choose_event_group_for_ask(update, context):
 
 def choose_event_time(update, context):
     events = Event.objects.filter(event_group__title=update.message.text, is_presentation=True)
-    print(events)
     if not events:
         return start(update, context)
     event_times = {}
     for event in events:
         event_times[f'{event.time_from}-{event.time_to}'] = event.presentations.all()
-    print(event_times)
     context.chat_data['event_times'] = event_times
-    buttons = [[KeyboardButton(event_time)] for event_time in event_times]
+    buttons = split_buttons(event_times, 3)
     buttons.append([KeyboardButton(BACK_BUTTON_CAPTION)])
     markup = ReplyKeyboardMarkup(
-        keyboard=buttons, resize_keyboard=True)
+        keyboard=buttons, resize_keyboard=True, one_time_keyboard=True)
     update.message.reply_text('Выберите время', reply_markup=markup)
 
     return CHOOSE_EVENT_SPEAKERS
@@ -150,19 +158,17 @@ def choose_event_speakers(update, context):
         speaker_and_presentation = {}
         for presentation in event_presentations:
             speaker_and_presentation[presentation.speaker.name] = presentation
-        print(speaker_and_presentation)
         context.user_data['speaker_and_presentation'] = speaker_and_presentation
-    buttons = [[KeyboardButton(speaker)] for speaker in context.user_data['speaker_and_presentation']]
+    buttons = split_buttons(context.user_data['speaker_and_presentation'], 2)
     buttons.append([KeyboardButton(BACK_BUTTON_CAPTION)])
     markup = ReplyKeyboardMarkup(
-        keyboard=buttons, resize_keyboard=True)
+        keyboard=buttons, resize_keyboard=True, one_time_keyboard=True)
     update.message.reply_text('Выберите спикера', reply_markup=markup)
 
     return QUESTION
 
 
 def ask_question(update, context):
-    print('question')
     text = 'Задайте вопрос спикеру'
     context.user_data['asked_speaker'] = update.message.text
     context.user_data['questioner_id'] = update.message.chat.id
@@ -174,7 +180,6 @@ def ask_question(update, context):
 def save_question(update, context):
     text = 'Ваш вопрос направлен спикеру'
     asked_speaker = context.user_data['asked_speaker']
-    print(asked_speaker)
     speaker_event = context.user_data['speaker_and_presentation'][asked_speaker]
     Question.objects.get_or_create(
         presentation=speaker_event,
@@ -182,7 +187,7 @@ def save_question(update, context):
         listener=Profile.objects.get(
             telegram_id=context.user_data['questioner_id'])
     )
-    buttons = [KeyboardButton('Задать новый вопрос')]
+    buttons = [KeyboardButton('Задать новый вопрос'), KeyboardButton('Главное меню')]
     reply_markup = ReplyKeyboardMarkup(
         keyboard=[buttons],
         resize_keyboard=True,
@@ -308,6 +313,7 @@ def main() -> None:
                                choose_event_time),
             ],
             CHOOSE_EVENT_SPEAKERS: [
+                MessageHandler(Filters.regex('^Главное меню$'), start),
                 MessageHandler(Filters.regex(f'^{BACK_BUTTON_CAPTION}$'),
                                choose_event_group_for_ask),
                 MessageHandler(Filters.text,
