@@ -20,8 +20,8 @@ class EventGroup(models.Model):
 
 class Event(models.Model):
     title = models.CharField('название', max_length=250)
-    time_from = models.TimeField('время начала', null=True, blank=True)
-    time_to = models.TimeField('время окончания', null=True, blank=True)
+    time_from = models.TimeField('время начала')
+    time_to = models.TimeField('время окончания')
     event_group = models.ForeignKey(
         EventGroup,
         on_delete=models.CASCADE,
@@ -30,7 +30,7 @@ class Event(models.Model):
     is_presentation = models.BooleanField('это доклад')
 
     def __str__(self) -> str:
-        return f'{self.title}'
+        return f'{self.time_from:%H:%M}-{self.time_to:%H:%M} {self.title}'
 
 
 class Presentation(models.Model):
