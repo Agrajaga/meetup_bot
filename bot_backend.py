@@ -15,6 +15,7 @@ django.setup()
 
 from bot.models import Event, EventGroup, Profile, Question, Presentation
 
+
 MAIN_MENU_CHOICE, \
 EVENT_GROUP_CHOICE, \
 EVENT_CHOICE, \
@@ -57,7 +58,7 @@ def start(update: Update, context: CallbackContext) -> int:
 def choose_event_group(update: Update, context: CallbackContext) -> int:
     """Ask the user to select an event group"""
     groups = EventGroup.objects.all()
-    buttons = [[KeyboardButton(group.title)] for group in groups]
+    buttons = [[KeyboardButton(group.title) for group in groups]]
     buttons.append([KeyboardButton(MAIN_MENU_BUTTON_CAPTION)])
     markup = ReplyKeyboardMarkup(
         keyboard=buttons, resize_keyboard=True, one_time_keyboard=True)
@@ -71,8 +72,20 @@ def choose_event(update: Update, context: CallbackContext) -> int:
     events = Event.objects.filter(event_group__title=update.message.text)
     if not events:
         return start(update, context)
-    context.chat_data['events'] = events
-    buttons = [[KeyboardButton(event.title)] for event in events]
+    num_cols = 2
+    buttons = []
+    row = []
+    for event in events:
+        row.append(
+            KeyboardButton(
+                f'{event.time_from:%H:%M} {event.title}'
+            )
+        )
+        if len(row) == num_cols:
+            buttons.append(row)
+            row = []
+    if row:
+        buttons.append(row)
     buttons.append([KeyboardButton(BACK_BUTTON_CAPTION)])
     markup = ReplyKeyboardMarkup(
         keyboard=buttons, resize_keyboard=True)
@@ -83,24 +96,20 @@ def choose_event(update: Update, context: CallbackContext) -> int:
 
 def show_event(update: Update, context: CallbackContext) -> int:
     """Show event description"""
-    events = context.chat_data['events']
-    try:
-        event = events.get(title=update.message.text)
-    except ObjectDoesNotExist:
+    event_title = update.message.text[6:]
+    presentations = Presentation.objects \
+        .filter(event__title=event_title) 
+    if not presentations:
         return start(update, context)
-    text = textwrap.dedent(
-        f'''
-        Название презентации:
-        {event}
 
-        Описание презентации:
-        {event.description}
-
-        Спикер:
-        {event.speaker.name}
-        '''
-    )
-    update.message.reply_text(text)
+    text_blocks = [
+        f'<b><i>{presentations[0].event}</i></b>\n',
+    ]
+    for presentation in presentations:
+        text_blocks.append(
+            f'<b>{presentation.title}</b>\n{presentation.speaker}\n',
+        )
+    update.message.reply_html('\n'.join(text_blocks))
 
     return EVENT_CHOICE
 
