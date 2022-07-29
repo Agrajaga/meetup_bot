@@ -248,18 +248,16 @@ def new_question_from_the_speaker(update, context, next=False):
 
 def get_questions_from_the_speaker(speaker_id: str, question_number=0):
     speaker = Profile.objects.get(telegram_id=speaker_id)
-    presentation = Presentation.objects.get(speaker=speaker)
     try:
-        question = Question.objects.filter(presentation=presentation).filter(
-            is_active=True)[question_number]
+        question = Question.objects.filter(
+            is_active=True, presentation__speaker=speaker)[question_number]
         return True, question
     except IndexError:
         question = Question.objects.filter(
-            presentation=presentation).filter(is_active=True)
+            is_active=True, presentation__speaker=speaker)
         if len(question) > 0:
             return False, question[0]
-        else:
-            return False, False
+        return False, False
 
 
 def answer_the_question(update, context):
