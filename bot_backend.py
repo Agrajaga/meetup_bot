@@ -41,6 +41,7 @@ def start(update: Update, context: CallbackContext) -> int:
     keyboard = [[KeyboardButton('Программа'), KeyboardButton('Задать вопрос')]]
     if user_profile.is_speaker:
         keyboard.append([KeyboardButton('Ответить на вопрос')])
+    keyboard.append([KeyboardButton('Задонатить')])
     markup = ReplyKeyboardMarkup(
         keyboard=keyboard, resize_keyboard=True, one_time_keyboard=True)
     if not created:
@@ -77,7 +78,9 @@ def split_buttons(arr, size):
 
 def choose_event(update: Update, context: CallbackContext) -> int:
     """Ask the user to select an event"""
-    events = Event.objects.filter(event_group__title=update.message.text)
+    events = Event.objects \
+        .filter(event_group__title=update.message.text) \
+        .order_by('time_from')
     if not events:
         return start(update, context)
     num_cols = 2
@@ -280,6 +283,11 @@ def help_command(update: Update, context: CallbackContext) -> None:
     update.message.reply_text('SOS!')
 
 
+def pay_donate(update: Update, context: CallbackContext):
+    update.message.reply_text('Пока не работает')
+    return start(update, context)
+
+
 def main() -> None:
     """Start the bot."""
     load_dotenv()
@@ -300,6 +308,8 @@ def main() -> None:
                                choose_event_group_for_ask),
                 MessageHandler(Filters.regex('^Ответить на вопрос$'),
                                new_question_from_the_speaker),
+                MessageHandler(Filters.regex('^Задонатить$'),
+                               pay_donate),
             ],
             EVENT_GROUP_CHOICE: [
                 MessageHandler(Filters.regex(f'^{MAIN_MENU_BUTTON_CAPTION}$'),
