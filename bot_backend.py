@@ -1,8 +1,6 @@
 import os
-import textwrap
 
 import django
-from django.core.exceptions import ObjectDoesNotExist
 from functools import partial
 from dotenv import load_dotenv
 from telegram import (KeyboardButton, ReplyKeyboardMarkup, ReplyKeyboardRemove,
@@ -17,14 +15,14 @@ from bot.models import Event, EventGroup, Profile, Question, Presentation
 
 
 MAIN_MENU_CHOICE, \
-EVENT_GROUP_CHOICE, \
-EVENT_CHOICE, \
-CHOOSE_EVENT_TIME, \
-CHOOSE_EVENT_SPEAKERS, \
-QUESTION, \
-SAVE_QUESTION, \
-ANSWER, \
-NEXT_QUESTION = range(9)
+    EVENT_GROUP_CHOICE, \
+    EVENT_CHOICE, \
+    CHOOSE_EVENT_TIME, \
+    CHOOSE_EVENT_SPEAKERS, \
+    QUESTION, \
+    SAVE_QUESTION, \
+    ANSWER, \
+    NEXT_QUESTION = range(9)
 
 MAIN_MENU_BUTTON_CAPTION = 'Главное меню'
 BACK_BUTTON_CAPTION = 'Назад'
@@ -58,7 +56,8 @@ def start(update: Update, context: CallbackContext) -> int:
 def choose_event_group(update: Update, context: CallbackContext) -> int:
     """Ask the user to select an event group"""
     groups = EventGroup.objects.all()
-    buttons = [[KeyboardButton(group.title) for group in groups], [KeyboardButton(MAIN_MENU_BUTTON_CAPTION)]]
+    buttons = [[KeyboardButton(group.title) for group in groups], [
+        KeyboardButton(MAIN_MENU_BUTTON_CAPTION)]]
     markup = ReplyKeyboardMarkup(
         keyboard=buttons, resize_keyboard=True, one_time_keyboard=True)
     update.message.reply_text('Какая секция?', reply_markup=markup)
@@ -105,9 +104,10 @@ def choose_event(update: Update, context: CallbackContext) -> int:
 
 def show_event(update: Update, context: CallbackContext) -> int:
     """Show event description"""
-    event_title = update.message.text[6:]
+    title_position = 6
+    event_title = update.message.text[title_position:]
     presentations = Presentation.objects \
-        .filter(event__title=event_title) 
+        .filter(event__title=event_title)
     if not presentations:
         return start(update, context)
 
@@ -136,7 +136,8 @@ def choose_event_group_for_ask(update, context):
 
 
 def choose_event_time(update, context):
-    events = Event.objects.filter(event_group__title=update.message.text, is_presentation=True)
+    events = Event.objects.filter(
+        event_group__title=update.message.text, is_presentation=True)
     if not events:
         return start(update, context)
     event_times = {}
@@ -187,7 +188,10 @@ def save_question(update, context):
         listener=Profile.objects.get(
             telegram_id=context.user_data['questioner_id'])
     )
-    buttons = [KeyboardButton('Задать новый вопрос'), KeyboardButton('Главное меню')]
+    buttons = [
+        KeyboardButton('Задать новый вопрос'),
+        KeyboardButton(MAIN_MENU_BUTTON_CAPTION)
+    ]
     reply_markup = ReplyKeyboardMarkup(
         keyboard=[buttons],
         resize_keyboard=True,
@@ -220,7 +224,8 @@ def new_question_from_the_speaker(update, context, next=False):
             message_text = question.text
     else:
         question_number = context.user_data['question_number'] + 1
-        result_request, question = get_questions_from_the_speaker(speaker_id, question_number)
+        result_request, question = get_questions_from_the_speaker(
+            speaker_id, question_number)
         if result_request:
             context.user_data['question_number'] += 1
         else:
@@ -242,10 +247,12 @@ def get_questions_from_the_speaker(speaker_id: str, question_number=0):
     speaker = Profile.objects.get(telegram_id=speaker_id)
     presentation = Presentation.objects.get(speaker=speaker)
     try:
-        question = Question.objects.filter(presentation=presentation).filter(is_active=True)[question_number]
+        question = Question.objects.filter(presentation=presentation).filter(
+            is_active=True)[question_number]
         return True, question
     except IndexError:
-        question = Question.objects.filter(presentation=presentation).filter(is_active=True)
+        question = Question.objects.filter(
+            presentation=presentation).filter(is_active=True)
         if len(question) > 0:
             return False, question[0]
         else:
@@ -262,7 +269,8 @@ def answer_the_question(update, context):
     question.save()
 
     context.bot.send_message(chat_id=listener_id, text=answer)
-    update.message.reply_text("Ответ отправлен. Нажмите на кнопку 'Следующий вопрос'")
+    update.message.reply_text(
+        "Ответ отправлен. Нажмите на кнопку 'Следующий вопрос'")
 
     return NEXT_QUESTION
 
@@ -282,7 +290,6 @@ def main() -> None:
 
     conv_handler = ConversationHandler(
         entry_points=[
-            CommandHandler('start', start, filters=Filters.regex('^.{7,99}$')),
             CommandHandler('start', start),
         ],
         states={
@@ -313,7 +320,8 @@ def main() -> None:
                                choose_event_time),
             ],
             CHOOSE_EVENT_SPEAKERS: [
-                MessageHandler(Filters.regex('^Главное меню$'), start),
+                MessageHandler(Filters.regex(f'^{MAIN_MENU_BUTTON_CAPTION}$'),
+                               start),
                 MessageHandler(Filters.regex(f'^{BACK_BUTTON_CAPTION}$'),
                                choose_event_group_for_ask),
                 MessageHandler(Filters.text,
@@ -328,9 +336,11 @@ def main() -> None:
                 MessageHandler(Filters.text, save_question),
             ],
             ANSWER: [
-                MessageHandler(Filters.regex('^Главное меню$'), start),
+                MessageHandler(Filters.regex(f'^{MAIN_MENU_BUTTON_CAPTION}$'),
+                               start),
                 MessageHandler(Filters.regex('^Следующий вопрос$'),
-                               partial(new_question_from_the_speaker, next=True),
+                               partial(
+                                   new_question_from_the_speaker, next=True),
                                ),
                 MessageHandler(Filters.text, answer_the_question)
             ],
@@ -341,7 +351,6 @@ def main() -> None:
         },
         fallbacks=[
             CommandHandler('start', start),
-            MessageHandler(Filters.regex('^Начать$'), start),
         ],
         per_user=True,
         per_chat=True,
