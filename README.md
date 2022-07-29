@@ -9,10 +9,12 @@ __Здесь будет красивое и подробное описание 
     ```
     pip install -r requirements.txt
     ```
-1. Создать файл `.env`, в него положить токен бота
+1. Создать файл `.env`, в него положить токен бота и токен для приема оплат
     ```
     TG_TOKEN=<ваш токен>
+    TG_PAY_TOKEN=<другой ваш токен>
     ```
+    Как получать токен оплат: https://core.telegram.org/bots/payments#getting-a-token
 1. Создать БД 
     ```
     python manage.py migrate
