@@ -408,7 +408,7 @@ def main() -> None:
                                partial(new_question_from_the_speaker, next=True)),
             ],
             INPUT_DONATE: [
-                MessageHandler(Filters.regex('^\d$'), pay_donate),
+                MessageHandler(Filters.regex('^[1-9][0-9]+$'), pay_donate),
                 MessageHandler(Filters.regex(f'^{BACK_BUTTON_CAPTION}$'),
                                start),
                 MessageHandler(Filters.text | ~Filters.command,
