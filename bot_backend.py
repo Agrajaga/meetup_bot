@@ -385,8 +385,9 @@ def show_person(update: Update, context: CallbackContext) -> int:
         .first()
     if not person and not showed_persons:
         update.message.reply_text(
-            'Пока знакомиться не с кем. Попробуйте позже.'
+            'Пока знакомиться не с кем.\nКак кто-то появится, я Вам сообщу.'
         )
+        context.bot_data['lonely_user'] = update.effective_user.id
         return start(update, context)
     if not person:
         context.user_data['showed_persons'] = []
@@ -465,6 +466,11 @@ def save_survay(update: Update, context: CallbackContext) -> int:
     profile.job = context.user_data['survay_job']
     profile.ready_meet = True
     profile.save()
+
+    lonely_user = context.bot_data.get('lonely_user', None)
+    if lonely_user and lonely_user != update.effective_user.id:
+        context.bot_data['lonely_user'] = None
+        context.bot.send_message(lonely_user, '🤝 Появились новые анкеты 🤝')
 
     start_meet(update, context)
     return ConversationHandler.END
