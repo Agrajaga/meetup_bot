@@ -65,14 +65,23 @@ def choose_event_group(update: Update, context: CallbackContext) -> int:
     return EVENT_GROUP_CHOICE
 
 
-def split_buttons(arr, size):
-    arrs = []
-    while len(arr) > size:
-        pice = arr[:size]
-        arrs.append(KeyboardButton(pice))
-        arr = arr[size:]
-    arrs.append(arr)
-    return arrs
+def split_buttons(buttons_values):
+    num_cols = 2
+    buttons = []
+    row = []
+    for buttons_value in buttons_values:
+        row.append(
+            KeyboardButton(
+                buttons_value
+            )
+        )
+        if len(row) == num_cols:
+            buttons.append(row)
+            row = []
+    if row:
+        buttons.append(row)
+
+    return buttons
 
 
 def choose_event(update: Update, context: CallbackContext) -> int:
@@ -126,7 +135,7 @@ def show_event(update: Update, context: CallbackContext) -> int:
 def choose_event_group_for_ask(update, context):
     groups = EventGroup.objects.all()
     group_titles = [group.title for group in groups]
-    divided_buttons = split_buttons(group_titles, 3)
+    divided_buttons = split_buttons(group_titles)
     divided_buttons.append([KeyboardButton(MAIN_MENU_BUTTON_CAPTION)])
     markup = ReplyKeyboardMarkup(
         keyboard=divided_buttons, resize_keyboard=True, one_time_keyboard=True)
@@ -142,10 +151,11 @@ def choose_event_time(update, context):
         return start(update, context)
     event_times = {}
     for event in events:
-        event_times[f'{event.time_from}-{event.time_to}'] = event.presentations.all()
+        event_times[f'{event.time_from:%H:%M}-{event.time_to:%H:%M}'] = event.presentations.all()
     context.chat_data['event_times'] = event_times
-    buttons = split_buttons(event_times, 3)
+    buttons = split_buttons(list(sorted(event_times.keys())))
     buttons.append([KeyboardButton(BACK_BUTTON_CAPTION)])
+    print(list(sorted(event_times.keys())))
     markup = ReplyKeyboardMarkup(
         keyboard=buttons, resize_keyboard=True, one_time_keyboard=True)
     update.message.reply_text('Выберите время', reply_markup=markup)
@@ -154,13 +164,12 @@ def choose_event_time(update, context):
 
 
 def choose_event_speakers(update, context):
-    if 'speaker_and_presentation' not in context.user_data:
-        event_presentations = context.chat_data['event_times'][update.message.text]
-        speaker_and_presentation = {}
-        for presentation in event_presentations:
-            speaker_and_presentation[presentation.speaker.name] = presentation
-        context.user_data['speaker_and_presentation'] = speaker_and_presentation
-    buttons = split_buttons(context.user_data['speaker_and_presentation'], 2)
+    event_presentations = context.chat_data['event_times'][update.message.text]
+    speaker_and_presentation = {}
+    for presentation in event_presentations:
+        speaker_and_presentation[presentation.speaker.name] = presentation
+    context.user_data['speaker_and_presentation'] = speaker_and_presentation
+    buttons = split_buttons(list(set(context.user_data['speaker_and_presentation'].keys())))
     buttons.append([KeyboardButton(BACK_BUTTON_CAPTION)])
     markup = ReplyKeyboardMarkup(
         keyboard=buttons, resize_keyboard=True, one_time_keyboard=True)
@@ -171,9 +180,13 @@ def choose_event_speakers(update, context):
 
 def ask_question(update, context):
     text = 'Задайте вопрос спикеру'
-    context.user_data['asked_speaker'] = update.message.text
+    keyboard = [[KeyboardButton('Главное меню')]]
+    markup = ReplyKeyboardMarkup(
+        keyboard=keyboard, resize_keyboard=True, one_time_keyboard=True)
+    if not update.message.text == 'Задать новый вопрос':
+        context.user_data['asked_speaker'] = update.message.text
     context.user_data['questioner_id'] = update.message.chat.id
-    update.message.reply_text(text)
+    update.message.reply_text(text, reply_markup=markup)
 
     return SAVE_QUESTION
 
@@ -182,7 +195,7 @@ def save_question(update, context):
     text = 'Ваш вопрос направлен спикеру'
     asked_speaker = context.user_data['asked_speaker']
     speaker_event = context.user_data['speaker_and_presentation'][asked_speaker]
-    Question.objects.get_or_create(
+    Question.objects.create(
         presentation=speaker_event,
         text=update.message.text,
         listener=Profile.objects.get(
@@ -320,19 +333,23 @@ def main() -> None:
                                choose_event_time),
             ],
             CHOOSE_EVENT_SPEAKERS: [
-                MessageHandler(Filters.regex(f'^{MAIN_MENU_BUTTON_CAPTION}$'),
-                               start),
                 MessageHandler(Filters.regex(f'^{BACK_BUTTON_CAPTION}$'),
                                choose_event_group_for_ask),
+                MessageHandler(Filters.regex(
+                    '^Задать новый вопрос$'), ask_question),
+                MessageHandler(Filters.regex(f'^{MAIN_MENU_BUTTON_CAPTION}$'),
+                               start),
                 MessageHandler(Filters.text,
                                choose_event_speakers),
-                MessageHandler(Filters.regex(
-                    '^Задать новый вопрос$'), choose_event_speakers),
             ],
             QUESTION: [
+                MessageHandler(Filters.regex(f'^{BACK_BUTTON_CAPTION}$'),
+                               choose_event_group_for_ask),
                 MessageHandler(Filters.text, ask_question),
             ],
             SAVE_QUESTION: [
+                MessageHandler(Filters.regex(f'^{MAIN_MENU_BUTTON_CAPTION}$'),
+                               start),
                 MessageHandler(Filters.text, save_question),
             ],
             ANSWER: [
