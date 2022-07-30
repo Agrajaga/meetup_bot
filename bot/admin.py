@@ -1,10 +1,10 @@
-from email import message
-from turtle import update
-from django.contrib import admin
 import os
+
+from django.contrib import admin
 from telegram import Bot
 
-from .models import Event, EventGroup, Presentation, Profile, Question, MailingList
+from .models import (Event, EventGroup, MailingList, Presentation, Profile,
+                     Question)
 
 
 @admin.register(MailingList)
