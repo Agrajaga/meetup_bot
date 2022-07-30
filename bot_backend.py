@@ -209,7 +209,7 @@ def save_question(update, context):
     return CHOOSE_EVENT_SPEAKERS
 
 
-def new_question_from_the_speaker(update, context, next=False):
+def new_question_from_the_speaker(update:Update, context: CallbackContext, next=False)-> int:
     speaker_id = update.message.chat.id
     buttons = [
         KeyboardButton('Следующий вопрос'),
@@ -262,7 +262,7 @@ def get_questions_from_the_speaker(speaker_id: str, question_number=0):
         return False, False
 
 
-def answer_the_question(update, context):
+def answer_the_question(update:Update, context: CallbackContext)-> int:
     question = context.user_data['question']
     answer = update.message.text
     listener_id = question.listener.telegram_id
@@ -337,7 +337,6 @@ def unsuccessful_payment(update: Update, context: CallbackContext) -> int:
 
 def main() -> None:
     """Start the bot."""
-    load_dotenv()
     tg_token = os.getenv("TG_TOKEN")
 
     updater = Updater(tg_token)
