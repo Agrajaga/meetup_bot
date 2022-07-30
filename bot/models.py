@@ -1,3 +1,4 @@
+from email import message
 from django.db import models
 
 
@@ -58,3 +59,15 @@ class Question(models.Model):
 
     def __str__(self) -> str:
         return f'{self.presentation} - {self.listener}'
+
+
+class MailingList(models.Model):
+    name = models.CharField('название', max_length=250)
+    message = models.TextField('сообщение')
+
+    class Meta:
+        verbose_name = 'рассылка'
+        verbose_name_plural = 'рассылки'
+
+    def __str__(self) -> str:
+        return f"{self.name}"
