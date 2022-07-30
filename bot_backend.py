@@ -2,17 +2,22 @@ import os
 
 import django
 from functools import partial
-from dotenv import load_dotenv
 from telegram import (KeyboardButton, LabeledPrice, ReplyKeyboardMarkup,
                       Update)
 from telegram.ext import (CallbackContext, CommandHandler, ConversationHandler,
-                          Filters, MessageHandler, Updater, PreCheckoutQueryHandler)
+                          Filters, MessageHandler, Updater,
+                          PreCheckoutQueryHandler)
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'meetup.settings')
 django.setup()
 
 from bot.models import Event, EventGroup, Profile, Question, Presentation
 
+
+SURVAY_INPUT_NAME, \
+    SURVAY_INPUT_COMPANY, \
+    SURVAY_INPUT_JOB, \
+    SURVAY_CONFIRM = range(4)
 
 MAIN_MENU_CHOICE, \
     EVENT_GROUP_CHOICE, \
@@ -24,7 +29,8 @@ MAIN_MENU_CHOICE, \
     ANSWER, \
     NEXT_QUESTION, \
     INPUT_DONATE, \
-    CHECK_PAYMENT = range(11)
+    CHECK_PAYMENT, \
+    MEET_CHOICE = range(12)
 
 MAIN_MENU_BUTTON_CAPTION = 'Главное меню'
 BACK_BUTTON_CAPTION = 'Назад'
@@ -40,13 +46,15 @@ def start(update: Update, context: CallbackContext) -> int:
             'telegram_username': tg_user['username'],
         })
     context.user_data['profile'] = user_profile
-    keyboard = [[KeyboardButton('Программа'), KeyboardButton('Задать вопрос')]]
+    keyboard = [
+        [KeyboardButton('Программа'), KeyboardButton('Задать вопрос')],
+        [KeyboardButton('Задонатить'), KeyboardButton('Познакомиться')],
+    ]
     if user_profile.is_speaker:
         keyboard.append([KeyboardButton('Ответить на вопрос')])
-    keyboard.append([KeyboardButton('Задонатить')])
     markup = ReplyKeyboardMarkup(
         keyboard=keyboard, resize_keyboard=True, one_time_keyboard=True)
-    
+
     text = 'Вы находитесь в главном меню'
     if created:
         text = f'Привет {user_profile.name}'
@@ -206,7 +214,11 @@ def save_question(update, context):
     return CHOOSE_EVENT_SPEAKERS
 
 
-def new_question_from_the_speaker(update:Update, context: CallbackContext, next=False)-> int:
+def new_question_from_the_speaker(
+    update: Update,
+    context: CallbackContext,
+    next=False
+) -> int:
     '''Show the question to the speaker and ask him to enter the answer'''
     speaker_id = update.message.chat.id
     buttons = [
@@ -261,7 +273,7 @@ def get_questions_from_the_speaker(speaker_id: str, question_number=0):
         return False, False
 
 
-def answer_the_question(update:Update, context: CallbackContext)-> int:
+def answer_the_question(update: Update, context: CallbackContext) -> int:
     '''Send, save the answer and confirm for speaker'''
     question = context.user_data['question']
     answer = update.message.text
@@ -335,6 +347,123 @@ def unsuccessful_payment(update: Update, context: CallbackContext) -> int:
     return ask_donate_amount(update, context)
 
 
+def start_meet(update: Update, context: CallbackContext) -> int:
+    '''Start meet conversation'''
+    buttons = [
+        [
+            KeyboardButton('Заполнить анкету'),
+            KeyboardButton('Подобрать знакомство'),
+        ],
+        [KeyboardButton(MAIN_MENU_BUTTON_CAPTION)],
+    ]
+    markup = ReplyKeyboardMarkup(
+        keyboard=buttons,
+        resize_keyboard=True,
+    )
+    update.message.reply_text(
+        'Знакомьтесь с интересными людьми',
+        reply_markup=markup,
+    )
+
+    return MEET_CHOICE
+
+
+def show_person(update: Update, context: CallbackContext) -> int:
+    profile = context.user_data['profile']
+    if not profile.ready_meet:
+        update.message.reply_text(
+            'Для знакомства заполните свою анкету'
+        )
+        return start_meet(update, context)
+    showed_persons = context.user_data.get('showed_persons', [])
+    person = Profile.objects \
+        .exclude(id=profile.id) \
+        .exclude(id__in=showed_persons) \
+        .filter(ready_meet=True) \
+        .order_by('?') \
+        .first()
+    if not person and not showed_persons:
+        update.message.reply_text(
+            'Пока знакомиться не с кем. Попробуйте позже.'
+        )
+        return start(update, context)
+    if not person:
+        context.user_data['showed_persons'] = []
+        return show_person(update, context)
+
+    showed_persons.append(person.id)
+    context.user_data['showed_persons'] = showed_persons
+
+    text_blocks = [
+        f'<b>{person.name}</b>\n',
+        f'Компания: <i>{person.company}</i>',
+        f'Должность: <i>{person.job}</i>',
+        f'@{person.telegram_username}\n',
+    ]
+    update.message.reply_html('\n'.join(text_blocks))
+
+    return MEET_CHOICE
+
+
+def start_survay(update: Update, context: CallbackContext) -> int:
+    text = 'Начнем знакомство.\nКак Вас зовут? Обычно указывают имя и фамилию.'
+    update.message.reply_text(text)
+    return SURVAY_INPUT_NAME
+
+
+def input_name(update: Update, context: CallbackContext) -> int:
+    name = update.message.text
+    context.user_data['survay_name'] = name
+    text = f'Очень приятно, {name}.\nКак называется Ваша компания?'
+    update.message.reply_text(text)
+    return SURVAY_INPUT_COMPANY
+
+
+def input_company(update: Update, context: CallbackContext) -> int:
+    company = update.message.text
+    context.user_data['survay_company'] = company
+    text = f'Ваша компания - {company}.\nКак называется Ваша должность?'
+    update.message.reply_text(text)
+    return SURVAY_INPUT_JOB
+
+
+def input_job(update: Update, context: CallbackContext) -> int:
+    job = update.message.text
+    context.user_data['survay_job'] = job
+    buttons = [
+        KeyboardButton('Да, всё верно'),
+        KeyboardButton('Нет, давай заново'),
+    ]
+    markup = ReplyKeyboardMarkup(
+        keyboard=[buttons],
+        resize_keyboard=True,
+        one_time_keyboard=True,
+    )
+    text_blocks = [
+        'Вот мы и закончили!',
+        'Ваша анкета будет выглядеть так:\n\n',
+        f'<b>{context.user_data["survay_name"]}</b>\n',
+        f'Компания: <i>{context.user_data["survay_company"]}</i>',
+        f'Должность: <i>{job}</i>',
+        f'@{context.user_data["profile"].telegram_username}\n',
+    ]
+    update.message.reply_html('\n'.join(text_blocks), reply_markup=markup)
+
+    return SURVAY_CONFIRM
+
+
+def save_survay(update: Update, context: CallbackContext) -> int:
+    profile = context.user_data['profile']
+    profile.name = context.user_data['survay_name']
+    profile.company = context.user_data['survay_company']
+    profile.job = context.user_data['survay_job']
+    profile.ready_meet = True
+    profile.save()
+
+    start_meet(update, context)
+    return ConversationHandler.END
+
+
 def main() -> None:
     '''Start the bot.'''
     tg_token = os.getenv('TG_TOKEN')
@@ -343,6 +472,35 @@ def main() -> None:
     dispatcher = updater.dispatcher
 
     precheckout_handler = PreCheckoutQueryHandler(precheckout_callback)
+
+    survay_conv_handler = ConversationHandler(
+        entry_points=[
+            MessageHandler(Filters.regex('^Заполнить анкету$'), start_survay),
+        ],
+        states={
+            SURVAY_INPUT_NAME: [
+                MessageHandler(Filters.text | ~Filters.command, input_name),
+            ],
+            SURVAY_INPUT_COMPANY: [
+                MessageHandler(Filters.text | ~Filters.command, input_company),
+            ],
+            SURVAY_INPUT_JOB: [
+                MessageHandler(Filters.text | ~Filters.command, input_job),
+            ],
+            SURVAY_CONFIRM: [
+                MessageHandler(Filters.regex('^Да, всё верно$'),
+                               save_survay),
+                MessageHandler(Filters.regex('^Нет, давай заново$'),
+                               start_survay),
+            ],
+        },
+        fallbacks=[
+            MessageHandler(Filters.regex('^Заполнить анкету$'), start_survay),
+        ],
+        map_to_parent={
+            ConversationHandler.END: MEET_CHOICE,
+        }
+    )
 
     conv_handler = ConversationHandler(
         entry_points=[
@@ -358,6 +516,15 @@ def main() -> None:
                                new_question_from_the_speaker),
                 MessageHandler(Filters.regex('^Задонатить$'),
                                ask_donate_amount),
+                MessageHandler(Filters.regex('^Познакомиться$'),
+                               start_meet),
+            ],
+            MEET_CHOICE: [
+                survay_conv_handler,
+                MessageHandler(Filters.regex('^Подобрать знакомство$'),
+                               show_person),
+                MessageHandler(Filters.regex(f'^{MAIN_MENU_BUTTON_CAPTION}$'),
+                               start),
             ],
             EVENT_GROUP_CHOICE: [
                 MessageHandler(Filters.regex(f'^{MAIN_MENU_BUTTON_CAPTION}$'),
@@ -407,8 +574,8 @@ def main() -> None:
                 MessageHandler(Filters.text, answer_the_question)
             ],
             NEXT_QUESTION: [
-                MessageHandler(Filters.regex('^Следующий вопрос$'),
-                               partial(new_question_from_the_speaker, next=True)),
+                MessageHandler(Filters.regex('^Следующий вопрос$'), partial(
+                    new_question_from_the_speaker, next=True)),
             ],
             INPUT_DONATE: [
                 MessageHandler(Filters.regex('^[1-9][0-9]+$'), pay_donate),
@@ -419,7 +586,8 @@ def main() -> None:
             ],
             CHECK_PAYMENT: [
                 MessageHandler(Filters.successful_payment, successful_payment),
-                MessageHandler(~Filters.successful_payment, unsuccessful_payment),
+                MessageHandler(~Filters.successful_payment,
+                               unsuccessful_payment),
             ],
         },
         fallbacks=[
