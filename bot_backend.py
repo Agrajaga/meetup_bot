@@ -157,7 +157,7 @@ def choose_event_time(update, context):
 
 
 def choose_event_speakers(update, context):
-    '''Ask the user to select the time interval of events'''
+    '''Ask the user to select the speaker'''
     event_presentations = context.chat_data['event_times'][update.message.text]
     speaker_and_presentation = {}
     for presentation in event_presentations:
@@ -348,7 +348,7 @@ def unsuccessful_payment(update: Update, context: CallbackContext) -> int:
 
 
 def start_meet(update: Update, context: CallbackContext) -> int:
-    '''Start meet conversation'''
+    '''Ask the user to select action.'''
     buttons = [
         [
             KeyboardButton('Заполнить анкету'),
@@ -369,6 +369,7 @@ def start_meet(update: Update, context: CallbackContext) -> int:
 
 
 def show_person(update: Update, context: CallbackContext) -> int:
+    '''Show random person, exclude shown people.'''
     profile = context.user_data['profile']
     if not profile.ready_meet:
         update.message.reply_text(
@@ -406,12 +407,14 @@ def show_person(update: Update, context: CallbackContext) -> int:
 
 
 def start_survay(update: Update, context: CallbackContext) -> int:
+    '''Ask the user to enter full name.'''
     text = 'Начнем знакомство.\nКак Вас зовут? Обычно указывают имя и фамилию.'
     update.message.reply_text(text)
     return SURVAY_INPUT_NAME
 
 
 def input_name(update: Update, context: CallbackContext) -> int:
+    '''Ask the user to enter company name'''
     name = update.message.text
     context.user_data['survay_name'] = name
     text = f'Очень приятно, {name}.\nКак называется Ваша компания?'
@@ -420,6 +423,7 @@ def input_name(update: Update, context: CallbackContext) -> int:
 
 
 def input_company(update: Update, context: CallbackContext) -> int:
+    '''Ask the user to enter job title.'''
     company = update.message.text
     context.user_data['survay_company'] = company
     text = f'Ваша компания - {company}.\nКак называется Ваша должность?'
@@ -428,6 +432,7 @@ def input_company(update: Update, context: CallbackContext) -> int:
 
 
 def input_job(update: Update, context: CallbackContext) -> int:
+    '''Ask the user to confirm the entered data.'''
     job = update.message.text
     context.user_data['survay_job'] = job
     buttons = [
@@ -453,6 +458,7 @@ def input_job(update: Update, context: CallbackContext) -> int:
 
 
 def save_survay(update: Update, context: CallbackContext) -> int:
+    '''Save the entered data to the user profile.'''
     profile = context.user_data['profile']
     profile.name = context.user_data['survay_name']
     profile.company = context.user_data['survay_company']
