@@ -31,7 +31,7 @@ BACK_BUTTON_CAPTION = 'Назад'
 
 
 def start(update: Update, context: CallbackContext) -> int:
-    """Send a message when the command /start is issued."""
+    '''Send a message when the command /start is issued.'''
     tg_user = update.effective_user
     user_profile, created = Profile.objects.get_or_create(
         telegram_id=tg_user['id'],
@@ -39,25 +39,25 @@ def start(update: Update, context: CallbackContext) -> int:
             'name': tg_user['first_name'],
             'telegram_username': tg_user['username'],
         })
-
+    context.user_data['profile'] = user_profile
     keyboard = [[KeyboardButton('Программа'), KeyboardButton('Задать вопрос')]]
     if user_profile.is_speaker:
         keyboard.append([KeyboardButton('Ответить на вопрос')])
     keyboard.append([KeyboardButton('Задонатить')])
     markup = ReplyKeyboardMarkup(
         keyboard=keyboard, resize_keyboard=True, one_time_keyboard=True)
-    if not created:
-        update.message.reply_text(
-            'Вы находитесь в главном меню', reply_markup=markup)
-    else:
-        update.message.reply_text(
-            f'Привет {user_profile.name}', reply_markup=markup)
+    
+    text = 'Вы находитесь в главном меню'
+    if created:
+        text = f'Привет {user_profile.name}'
+
+    update.message.reply_text(text, reply_markup=markup)
 
     return MAIN_MENU_CHOICE
 
 
 def choose_event_group(update: Update, context: CallbackContext) -> int:
-    """Ask the user to select an event group"""
+    '''Ask the user to select an event group'''
     groups = EventGroup.objects.all()
     buttons = [[KeyboardButton(group.title) for group in groups], [
         KeyboardButton(MAIN_MENU_BUTTON_CAPTION)]]
@@ -68,46 +68,30 @@ def choose_event_group(update: Update, context: CallbackContext) -> int:
     return EVENT_GROUP_CHOICE
 
 
-def split_buttons(buttons_values):
-    num_cols = 2
-    buttons = []
-    row = []
-    for buttons_value in buttons_values:
-        row.append(
-            KeyboardButton(
-                buttons_value
-            )
-        )
+def split_keyboard(captions, num_cols):
+    '''Create structure of keyboard with several columns'''
+    buttons, row = [], []
+    for caption in captions:
+        row.append(KeyboardButton(caption))
         if len(row) == num_cols:
             buttons.append(row)
             row = []
     if row:
         buttons.append(row)
-
     return buttons
 
 
 def choose_event(update: Update, context: CallbackContext) -> int:
-    """Ask the user to select an event"""
+    '''Ask the user to select an event'''
     events = Event.objects \
         .filter(event_group__title=update.message.text) \
         .order_by('time_from')
     if not events:
         return start(update, context)
-    num_cols = 2
-    buttons = []
-    row = []
-    for event in events:
-        row.append(
-            KeyboardButton(
-                f'{event.time_from:%H:%M} {event.title}'
-            )
-        )
-        if len(row) == num_cols:
-            buttons.append(row)
-            row = []
-    if row:
-        buttons.append(row)
+    buttons = split_keyboard(
+        captions=[f'{event.time_from:%H:%M} {event.title}' for event in events],
+        num_cols=2,
+    )
     buttons.append([KeyboardButton(BACK_BUTTON_CAPTION)])
     markup = ReplyKeyboardMarkup(
         keyboard=buttons, resize_keyboard=True)
@@ -117,7 +101,7 @@ def choose_event(update: Update, context: CallbackContext) -> int:
 
 
 def show_event(update: Update, context: CallbackContext) -> int:
-    """Show event description"""
+    '''Show event description'''
     title_position = 6
     event_title = update.message.text[title_position:]
     presentations = Presentation.objects \
@@ -138,29 +122,25 @@ def show_event(update: Update, context: CallbackContext) -> int:
 
 
 def choose_event_group_for_ask(update, context):
-    groups = EventGroup.objects.all()
-    group_titles = [group.title for group in groups]
-    divided_buttons = split_buttons(group_titles)
-    divided_buttons.append([KeyboardButton(MAIN_MENU_BUTTON_CAPTION)])
-    markup = ReplyKeyboardMarkup(
-        keyboard=divided_buttons, resize_keyboard=True, one_time_keyboard=True)
-    update.message.reply_text('Какая секция?', reply_markup=markup)
+    '''Ask the user to select an event group'''
+    choose_event_group(update, context)
 
     return CHOOSE_EVENT_TIME
 
 
 def choose_event_time(update, context):
+    '''Ask the user to select the time interval of events'''
     events = Event.objects.filter(
         event_group__title=update.message.text, is_presentation=True)
     if not events:
         return start(update, context)
     event_times = {}
     for event in events:
-        event_times[f'{event.time_from:%H:%M}-{event.time_to:%H:%M}'] = event.presentations.all()
+        time_interval = f'{event.time_from:%H:%M}-{event.time_to:%H:%M}'
+        event_times[time_interval] = event.presentations.all()
     context.chat_data['event_times'] = event_times
-    buttons = split_buttons(list(sorted(event_times.keys())))
+    buttons = split_keyboard(list(sorted(event_times.keys())), 2)
     buttons.append([KeyboardButton(BACK_BUTTON_CAPTION)])
-    print(list(sorted(event_times.keys())))
     markup = ReplyKeyboardMarkup(
         keyboard=buttons, resize_keyboard=True, one_time_keyboard=True)
     update.message.reply_text('Выберите время', reply_markup=markup)
@@ -169,12 +149,16 @@ def choose_event_time(update, context):
 
 
 def choose_event_speakers(update, context):
+    '''Ask the user to select the time interval of events'''
     event_presentations = context.chat_data['event_times'][update.message.text]
     speaker_and_presentation = {}
     for presentation in event_presentations:
         speaker_and_presentation[presentation.speaker.name] = presentation
     context.user_data['speaker_and_presentation'] = speaker_and_presentation
-    buttons = split_buttons(list(set(context.user_data['speaker_and_presentation'].keys())))
+    buttons = split_keyboard(
+        captions=list(speaker_and_presentation.keys()),
+        num_cols=2
+    )
     buttons.append([KeyboardButton(BACK_BUTTON_CAPTION)])
     markup = ReplyKeyboardMarkup(
         keyboard=buttons, resize_keyboard=True, one_time_keyboard=True)
@@ -184,31 +168,31 @@ def choose_event_speakers(update, context):
 
 
 def ask_question(update, context):
+    '''Ask the user to enter a question'''
     text = 'Задайте вопрос спикеру'
-    keyboard = [[KeyboardButton('Главное меню')]]
+    keyboard = [[KeyboardButton(MAIN_MENU_BUTTON_CAPTION)]]
     markup = ReplyKeyboardMarkup(
         keyboard=keyboard, resize_keyboard=True, one_time_keyboard=True)
     if not update.message.text == 'Задать новый вопрос':
         context.user_data['asked_speaker'] = update.message.text
-    context.user_data['questioner_id'] = update.message.chat.id
     update.message.reply_text(text, reply_markup=markup)
 
     return SAVE_QUESTION
 
 
 def save_question(update, context):
+    '''Confirm the successful submission of the question'''
     text = 'Ваш вопрос направлен спикеру'
     asked_speaker = context.user_data['asked_speaker']
     speaker_event = context.user_data['speaker_and_presentation'][asked_speaker]
     Question.objects.create(
         presentation=speaker_event,
         text=update.message.text,
-        listener=Profile.objects.get(
-            telegram_id=context.user_data['questioner_id'])
+        listener=context.user_data['profile'],
     )
     buttons = [
         KeyboardButton('Задать новый вопрос'),
-        KeyboardButton(MAIN_MENU_BUTTON_CAPTION)
+        KeyboardButton(MAIN_MENU_BUTTON_CAPTION),
     ]
     reply_markup = ReplyKeyboardMarkup(
         keyboard=[buttons],
@@ -223,6 +207,7 @@ def save_question(update, context):
 
 
 def new_question_from_the_speaker(update:Update, context: CallbackContext, next=False)-> int:
+    '''Show the question to the speaker and ask him to enter the answer'''
     speaker_id = update.message.chat.id
     buttons = [
         KeyboardButton('Следующий вопрос'),
@@ -236,7 +221,7 @@ def new_question_from_the_speaker(update:Update, context: CallbackContext, next=
         result_request, question = get_questions_from_the_speaker(speaker_id)
         context.user_data['question_number'] = 0
         if not question:
-            message_text = "Вопросов нет"
+            message_text = 'Вопросов нет'
         else:
             context.user_data['question'] = question
             message_text = question.text
@@ -249,7 +234,7 @@ def new_question_from_the_speaker(update:Update, context: CallbackContext, next=
         else:
             context.user_data['question_number'] = 0
         if not question:
-            message_text = "Вопросов нет"
+            message_text = 'Вопросов нет'
         else:
             context.user_data['question'] = question
             message_text = question.text
@@ -262,20 +247,22 @@ def new_question_from_the_speaker(update:Update, context: CallbackContext, next=
 
 
 def get_questions_from_the_speaker(speaker_id: str, question_number=0):
+    '''Get a speaker question'''
     speaker = Profile.objects.get(telegram_id=speaker_id)
     try:
         question = Question.objects.filter(
             is_active=True, presentation__speaker=speaker)[question_number]
         return True, question
     except IndexError:
-        question = Question.objects.filter(
+        questions = Question.objects.filter(
             is_active=True, presentation__speaker=speaker)
-        if len(question) > 0:
-            return False, question[0]
+        if questions:
+            return False, questions[0]
         return False, False
 
 
 def answer_the_question(update:Update, context: CallbackContext)-> int:
+    '''Send, save the answer and confirm for speaker'''
     question = context.user_data['question']
     answer = update.message.text
     listener_id = question.listener.telegram_id
@@ -292,12 +279,12 @@ def answer_the_question(update:Update, context: CallbackContext)-> int:
 
 
 def help_command(update: Update, context: CallbackContext) -> None:
-    """Send a message when the command /help is issued."""
+    '''Send a message when the command /help is issued.'''
     update.message.reply_text('SOS!')
 
 
 def ask_donate_amount(update: Update, context: CallbackContext) -> int:
-    """Ask the user to enter the donation amount"""
+    '''Ask the user to enter the donation amount'''
     buttons = [KeyboardButton(BACK_BUTTON_CAPTION)]
     text = '💰💰💰 Укажите сумму доната в рублях (от 10 руб) 💰💰💰'
     markup = ReplyKeyboardMarkup(
@@ -310,15 +297,15 @@ def ask_donate_amount(update: Update, context: CallbackContext) -> int:
 
 
 def pay_donate(update: Update, context: CallbackContext) -> int:
-    """Sends an invoice."""
+    '''Sends an invoice.'''
     donate_amount = int(update.message.text)
     chat_id = update.message.chat_id
-    title = "Донателло!"
-    description = "Поддержим проведение таких митапов"
-    payload = "Donate Meetup-BOT"
-    provider_token = os.getenv("TG_PAY_TOKEN")
-    currency = "RUB"
-    prices = [LabeledPrice("На развитие", donate_amount * 100)]
+    title = 'Донателло!'
+    description = 'Поддержим проведение таких митапов'
+    payload = 'Donate Meetup-BOT'
+    provider_token = os.getenv('TG_PAY_TOKEN')
+    currency = 'RUB'
+    prices = [LabeledPrice('На развитие', donate_amount * 100)]
 
     context.bot.send_invoice(
         chat_id, title, description, payload, provider_token, currency, prices
@@ -328,29 +315,29 @@ def pay_donate(update: Update, context: CallbackContext) -> int:
 
 
 def precheckout_callback(update: Update, context: CallbackContext) -> None:
-    """Answers the PreQecheckoutQuery"""
+    '''Answers the PreQecheckoutQuery'''
     query = update.pre_checkout_query
     if query.invoice_payload != 'Donate Meetup-BOT':
-        query.answer(ok=False, error_message="Что-то пошло не так...")
+        query.answer(ok=False, error_message='Что-то пошло не так...')
     else:
         query.answer(ok=True)
 
 
 def successful_payment(update: Update, context: CallbackContext) -> int:
-    """Confirms the successful payment."""
+    '''Confirms the successful payment.'''
     update.message.reply_text('💰💰💰 Спасибо за Вашу поддержку! 💰💰💰')
     return start(update, context)
 
 
 def unsuccessful_payment(update: Update, context: CallbackContext) -> int:
-    """Notify about failed payment."""
-    update.message.reply_text("Что-то пошло не так! Давайте попробуем еще раз")
+    '''Notify about failed payment.'''
+    update.message.reply_text('Что-то пошло не так! Давайте попробуем еще раз')
     return ask_donate_amount(update, context)
 
 
 def main() -> None:
-    """Start the bot."""
-    tg_token = os.getenv("TG_TOKEN")
+    '''Start the bot.'''
+    tg_token = os.getenv('TG_TOKEN')
 
     updater = Updater(tg_token)
     dispatcher = updater.dispatcher
@@ -445,7 +432,7 @@ def main() -> None:
 
     dispatcher.add_handler(precheckout_handler)
     dispatcher.add_handler(conv_handler)
-    dispatcher.add_handler(CommandHandler("help", help_command))
+    dispatcher.add_handler(CommandHandler('help', help_command))
 
     updater.start_polling()
     updater.idle()
