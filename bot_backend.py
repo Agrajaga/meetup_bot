@@ -39,7 +39,7 @@ BACK_BUTTON_CAPTION = 'Назад'
 def start(update: Update, context: CallbackContext) -> int:
     """Send a message when the command /start is issued."""
     tg_user = update.effective_user
-    user_profile, created = Profile.objects.get_or_create(
+    user_profile, created = Profile.objects.update_or_create(
         telegram_id=tg_user['id'],
         defaults={
             'name': tg_user['first_name'],
@@ -50,7 +50,7 @@ def start(update: Update, context: CallbackContext) -> int:
         [KeyboardButton('Программа'), KeyboardButton('Задать вопрос')],
         [KeyboardButton('Задонатить'), KeyboardButton('Познакомиться')],
     ]
-    if user_profile.is_speaker:
+    if user_profile.presentations.exists():
         keyboard.append([KeyboardButton('Ответить на вопрос')])
     markup = ReplyKeyboardMarkup(
         keyboard=keyboard, resize_keyboard=True, one_time_keyboard=True)
@@ -631,6 +631,8 @@ def main() -> None:
             NEXT_QUESTION: [
                 MessageHandler(Filters.regex('^Следующий вопрос$'), partial(
                     new_question_from_the_speaker, next=True)),
+                MessageHandler(Filters.regex(f'^{MAIN_MENU_BUTTON_CAPTION}$'),
+                               start),
             ],
             INPUT_DONATE: [
                 MessageHandler(Filters.regex('^[1-9][0-9]+$'), pay_donate),

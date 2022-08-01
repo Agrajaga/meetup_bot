@@ -5,7 +5,7 @@ from django.db import models
 class Profile(models.Model):
     name = models.CharField('имя пользователя', max_length=150)
     telegram_id = models.CharField('телеграм ИД', max_length=20)
-    telegram_username = models.CharField('телеграм имя', max_length=50)
+    telegram_username = models.CharField('телеграм имя', max_length=50, null=True)
     company = models.CharField(
         'компания', max_length=150, blank=True, null=True)
     job = models.CharField('должность', max_length=150, blank=True, null=True)
