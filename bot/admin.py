@@ -7,6 +7,21 @@ from .models import (Event, EventGroup, MailingList, Presentation, Profile,
                      Question)
 
 
+@admin.register(Event)
+class EventAdmin(admin.ModelAdmin):
+    list_filter = ['is_presentation']
+
+
+@admin.register(Presentation)
+class PresentationAdmin(admin.ModelAdmin):
+    list_filter = ['event__event_group__title', 'event__is_presentation', 'speaker']
+
+
+@admin.register(Profile)
+class ProfileAdmin(admin.ModelAdmin):
+    list_display = ('name', 'is_speaker')
+
+
 @admin.register(MailingList)
 class MailingListAdmin(admin.ModelAdmin):
     actions = ['send_newsletter']
@@ -22,8 +37,5 @@ class MailingListAdmin(admin.ModelAdmin):
                 bot.send_message(chat_id=recipient, text=message)
 
 
-admin.site.register(Event)
 admin.site.register(EventGroup)
 admin.site.register(Question)
-admin.site.register(Profile)
-admin.site.register(Presentation)

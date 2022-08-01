@@ -1,4 +1,5 @@
 import os
+import textwrap
 
 import django
 from functools import partial
@@ -13,31 +14,30 @@ django.setup()
 
 from bot.models import Event, EventGroup, Profile, Question, Presentation
 
-
-SURVAY_INPUT_NAME, \
-    SURVAY_INPUT_COMPANY, \
-    SURVAY_INPUT_JOB, \
-    SURVAY_CONFIRM = range(4)
+SURVEY_INPUT_NAME, \
+SURVEY_INPUT_COMPANY, \
+SURVEY_INPUT_JOB, \
+SURVEY_CONFIRM = range(4)
 
 MAIN_MENU_CHOICE, \
-    EVENT_GROUP_CHOICE, \
-    EVENT_CHOICE, \
-    CHOOSE_EVENT_TIME, \
-    CHOOSE_EVENT_SPEAKERS, \
-    QUESTION, \
-    SAVE_QUESTION, \
-    ANSWER, \
-    NEXT_QUESTION, \
-    INPUT_DONATE, \
-    CHECK_PAYMENT, \
-    MEET_CHOICE = range(12)
+EVENT_GROUP_CHOICE, \
+EVENT_CHOICE, \
+CHOOSE_EVENT_TIME, \
+CHOOSE_EVENT_SPEAKERS, \
+QUESTION, \
+SAVE_QUESTION, \
+ANSWER, \
+NEXT_QUESTION, \
+INPUT_DONATE, \
+CHECK_PAYMENT, \
+MEET_CHOICE = range(12)
 
 MAIN_MENU_BUTTON_CAPTION = 'Главное меню'
 BACK_BUTTON_CAPTION = 'Назад'
 
 
 def start(update: Update, context: CallbackContext) -> int:
-    '''Send a message when the command /start is issued.'''
+    """Send a message when the command /start is issued."""
     tg_user = update.effective_user
     user_profile, created = Profile.objects.get_or_create(
         telegram_id=tg_user['id'],
@@ -65,7 +65,7 @@ def start(update: Update, context: CallbackContext) -> int:
 
 
 def choose_event_group(update: Update, context: CallbackContext) -> int:
-    '''Ask the user to select an event group'''
+    """Ask the user to select an event group"""
     groups = EventGroup.objects.all()
     buttons = [[KeyboardButton(group.title) for group in groups], [
         KeyboardButton(MAIN_MENU_BUTTON_CAPTION)]]
@@ -77,7 +77,7 @@ def choose_event_group(update: Update, context: CallbackContext) -> int:
 
 
 def split_keyboard(captions, num_cols):
-    '''Create structure of keyboard with several columns'''
+    """Create structure of keyboard with several columns"""
     buttons, row = [], []
     for caption in captions:
         row.append(KeyboardButton(caption))
@@ -90,7 +90,7 @@ def split_keyboard(captions, num_cols):
 
 
 def choose_event(update: Update, context: CallbackContext) -> int:
-    '''Ask the user to select an event'''
+    """Ask the user to select an event"""
     events = Event.objects \
         .filter(event_group__title=update.message.text) \
         .order_by('time_from')
@@ -109,7 +109,7 @@ def choose_event(update: Update, context: CallbackContext) -> int:
 
 
 def show_event(update: Update, context: CallbackContext) -> int:
-    '''Show event description'''
+    """Show event description"""
     title_position = 6
     event_title = update.message.text[title_position:]
     presentations = Presentation.objects \
@@ -130,14 +130,14 @@ def show_event(update: Update, context: CallbackContext) -> int:
 
 
 def choose_event_group_for_ask(update, context):
-    '''Ask the user to select an event group'''
+    """Ask the user to select an event group"""
     choose_event_group(update, context)
 
     return CHOOSE_EVENT_TIME
 
 
 def choose_event_time(update, context):
-    '''Ask the user to select the time interval of events'''
+    """Ask the user to select the time interval of events"""
     events = Event.objects.filter(
         event_group__title=update.message.text, is_presentation=True)
     if not events:
@@ -157,7 +157,7 @@ def choose_event_time(update, context):
 
 
 def choose_event_speakers(update, context):
-    '''Ask the user to select the speaker'''
+    """Ask the user to select the speaker"""
     event_presentations = context.chat_data['event_times'][update.message.text]
     speaker_and_presentation = {}
     for presentation in event_presentations:
@@ -176,20 +176,52 @@ def choose_event_speakers(update, context):
 
 
 def ask_question(update, context):
-    '''Ask the user to enter a question'''
-    text = 'Задайте вопрос спикеру'
-    keyboard = [[KeyboardButton(MAIN_MENU_BUTTON_CAPTION)]]
+    """Ask the user to enter a question"""
+    text = 'Задайте свой вопрос спикеру'
+    keyboard = [[KeyboardButton(MAIN_MENU_BUTTON_CAPTION)], [KeyboardButton('Показать вопросы')]]
     markup = ReplyKeyboardMarkup(
         keyboard=keyboard, resize_keyboard=True, one_time_keyboard=True)
-    if not update.message.text == 'Задать новый вопрос':
-        context.user_data['asked_speaker'] = update.message.text
+    if update.message.text not in list(context.user_data['speaker_and_presentation'].keys()):
+        buttons = split_keyboard(
+            captions=list(context.user_data['speaker_and_presentation'].keys()),
+            num_cols=2
+        )
+        buttons.append([KeyboardButton(BACK_BUTTON_CAPTION)])
+        markup = ReplyKeyboardMarkup(
+            keyboard=buttons, resize_keyboard=True, one_time_keyboard=True)
+        update.message.reply_text('Выберите спикера', reply_markup=markup)
+        return QUESTION
+
+    context.user_data['asked_speaker'] = update.message.text
     update.message.reply_text(text, reply_markup=markup)
 
     return SAVE_QUESTION
 
 
 def save_question(update, context):
-    '''Confirm the successful submission of the question'''
+    """Confirm the successful submission of the question"""
+    if update.message.text == 'Показать вопросы':
+        speaker = context.user_data['asked_speaker']
+        answered_questions = Question.objects.filter(presentation__speaker__name=speaker,
+                                                     is_active=False)
+        text = 'Еще нет вопросов с ответами'
+        if answered_questions.exists():
+            text = 'Если вы не нашли ответ на ваш вопрос, то задайте свой \n'
+            for question in answered_questions:
+                text += textwrap.dedent(
+                    f'''
+                    
+                    Вопрос {question.id}: 
+                    {question.text}
+                    
+                    Ответ: 
+                    {question.answer}
+                    '''
+                    )
+        update.message.reply_text(text)
+
+        return ask_question(update, context)
+
     text = 'Ваш вопрос направлен спикеру'
     asked_speaker = context.user_data['asked_speaker']
     speaker_event = context.user_data['speaker_and_presentation'][asked_speaker]
@@ -215,11 +247,11 @@ def save_question(update, context):
 
 
 def new_question_from_the_speaker(
-    update: Update,
-    context: CallbackContext,
-    next=False
+        update: Update,
+        context: CallbackContext,
+        next=False
 ) -> int:
-    '''Show the question to the speaker and ask him to enter the answer'''
+    """Show the question to the speaker and ask him to enter the answer"""
     speaker_id = update.message.chat.id
     buttons = [
         KeyboardButton('Следующий вопрос'),
@@ -259,7 +291,7 @@ def new_question_from_the_speaker(
 
 
 def get_questions_from_the_speaker(speaker_id: str, question_number=0):
-    '''Get a speaker question'''
+    """Get a speaker question"""
     speaker = Profile.objects.get(telegram_id=speaker_id)
     try:
         question = Question.objects.filter(
@@ -274,7 +306,7 @@ def get_questions_from_the_speaker(speaker_id: str, question_number=0):
 
 
 def answer_the_question(update: Update, context: CallbackContext) -> int:
-    '''Send, save the answer and confirm for speaker'''
+    """Send, save the answer and confirm for speaker"""
     question = context.user_data['question']
     answer = update.message.text
     listener_id = question.listener.telegram_id
@@ -291,12 +323,12 @@ def answer_the_question(update: Update, context: CallbackContext) -> int:
 
 
 def help_command(update: Update, context: CallbackContext) -> None:
-    '''Send a message when the command /help is issued.'''
+    """Send a message when the command /help is issued."""
     update.message.reply_text('SOS!')
 
 
 def ask_donate_amount(update: Update, context: CallbackContext) -> int:
-    '''Ask the user to enter the donation amount'''
+    """Ask the user to enter the donation amount"""
     buttons = [KeyboardButton(BACK_BUTTON_CAPTION)]
     text = '💰💰💰 Укажите сумму доната в рублях (от 10 руб) 💰💰💰'
     markup = ReplyKeyboardMarkup(
@@ -309,7 +341,7 @@ def ask_donate_amount(update: Update, context: CallbackContext) -> int:
 
 
 def pay_donate(update: Update, context: CallbackContext) -> int:
-    '''Sends an invoice.'''
+    """Sends an invoice."""
     donate_amount = int(update.message.text)
     chat_id = update.message.chat_id
     title = 'Донателло!'
@@ -327,7 +359,7 @@ def pay_donate(update: Update, context: CallbackContext) -> int:
 
 
 def precheckout_callback(update: Update, context: CallbackContext) -> None:
-    '''Answers the PreQecheckoutQuery'''
+    """Answers the PreQecheckoutQuery"""
     query = update.pre_checkout_query
     if query.invoice_payload != 'Donate Meetup-BOT':
         query.answer(ok=False, error_message='Что-то пошло не так...')
@@ -336,19 +368,19 @@ def precheckout_callback(update: Update, context: CallbackContext) -> None:
 
 
 def successful_payment(update: Update, context: CallbackContext) -> int:
-    '''Confirms the successful payment.'''
+    """Confirms the successful payment."""
     update.message.reply_text('💰💰💰 Спасибо за Вашу поддержку! 💰💰💰')
     return start(update, context)
 
 
 def unsuccessful_payment(update: Update, context: CallbackContext) -> int:
-    '''Notify about failed payment.'''
+    """Notify about failed payment."""
     update.message.reply_text('Что-то пошло не так! Давайте попробуем еще раз')
     return ask_donate_amount(update, context)
 
 
 def start_meet(update: Update, context: CallbackContext) -> int:
-    '''Ask the user to select action.'''
+    """Ask the user to select action."""
     buttons = [
         [
             KeyboardButton('Заполнить анкету'),
@@ -369,7 +401,7 @@ def start_meet(update: Update, context: CallbackContext) -> int:
 
 
 def show_person(update: Update, context: CallbackContext) -> int:
-    '''Show random person, exclude shown people.'''
+    """Show random person, exclude shown people."""
     profile = context.user_data['profile']
     if not profile.ready_meet:
         update.message.reply_text(
@@ -407,35 +439,35 @@ def show_person(update: Update, context: CallbackContext) -> int:
     return MEET_CHOICE
 
 
-def start_survay(update: Update, context: CallbackContext) -> int:
-    '''Ask the user to enter full name.'''
+def start_survey(update: Update, context: CallbackContext) -> int:
+    """Ask the user to enter full name."""
     text = 'Начнем знакомство.\nКак Вас зовут? Обычно указывают имя и фамилию.'
     update.message.reply_text(text)
-    return SURVAY_INPUT_NAME
+    return SURVEY_INPUT_NAME
 
 
 def input_name(update: Update, context: CallbackContext) -> int:
-    '''Ask the user to enter company name'''
+    """Ask the user to enter company name"""
     name = update.message.text
-    context.user_data['survay_name'] = name
+    context.user_data['survey_name'] = name
     text = f'Очень приятно, {name}.\nКак называется Ваша компания?'
     update.message.reply_text(text)
-    return SURVAY_INPUT_COMPANY
+    return SURVEY_INPUT_COMPANY
 
 
 def input_company(update: Update, context: CallbackContext) -> int:
-    '''Ask the user to enter job title.'''
+    """Ask the user to enter job title."""
     company = update.message.text
-    context.user_data['survay_company'] = company
+    context.user_data['survey_company'] = company
     text = f'Ваша компания - {company}.\nКак называется Ваша должность?'
     update.message.reply_text(text)
-    return SURVAY_INPUT_JOB
+    return SURVEY_INPUT_JOB
 
 
 def input_job(update: Update, context: CallbackContext) -> int:
-    '''Ask the user to confirm the entered data.'''
+    """Ask the user to confirm the entered data."""
     job = update.message.text
-    context.user_data['survay_job'] = job
+    context.user_data['survey_job'] = job
     buttons = [
         KeyboardButton('Да, всё верно'),
         KeyboardButton('Нет, давай заново'),
@@ -448,22 +480,22 @@ def input_job(update: Update, context: CallbackContext) -> int:
     text_blocks = [
         'Вот мы и закончили!',
         'Ваша анкета будет выглядеть так:\n\n',
-        f'<b>{context.user_data["survay_name"]}</b>\n',
-        f'Компания: <i>{context.user_data["survay_company"]}</i>',
+        f'<b>{context.user_data["survey_name"]}</b>\n',
+        f'Компания: <i>{context.user_data["survey_company"]}</i>',
         f'Должность: <i>{job}</i>',
         f'@{context.user_data["profile"].telegram_username}\n',
     ]
     update.message.reply_html('\n'.join(text_blocks), reply_markup=markup)
 
-    return SURVAY_CONFIRM
+    return SURVEY_CONFIRM
 
 
-def save_survay(update: Update, context: CallbackContext) -> int:
-    '''Save the entered data to the user profile.'''
+def save_survey(update: Update, context: CallbackContext) -> int:
+    """Save the entered data to the user profile."""
     profile = context.user_data['profile']
-    profile.name = context.user_data['survay_name']
-    profile.company = context.user_data['survay_company']
-    profile.job = context.user_data['survay_job']
+    profile.name = context.user_data['survey_name']
+    profile.company = context.user_data['survey_company']
+    profile.job = context.user_data['survey_job']
     profile.ready_meet = True
     profile.save()
 
@@ -477,7 +509,7 @@ def save_survay(update: Update, context: CallbackContext) -> int:
 
 
 def main() -> None:
-    '''Start the bot.'''
+    """Start the bot."""
     tg_token = os.getenv('TG_TOKEN')
 
     updater = Updater(tg_token)
@@ -485,29 +517,29 @@ def main() -> None:
 
     precheckout_handler = PreCheckoutQueryHandler(precheckout_callback)
 
-    survay_conv_handler = ConversationHandler(
+    survey_conv_handler = ConversationHandler(
         entry_points=[
-            MessageHandler(Filters.regex('^Заполнить анкету$'), start_survay),
+            MessageHandler(Filters.regex('^Заполнить анкету$'), start_survey),
         ],
         states={
-            SURVAY_INPUT_NAME: [
+            SURVEY_INPUT_NAME: [
                 MessageHandler(Filters.text | ~Filters.command, input_name),
             ],
-            SURVAY_INPUT_COMPANY: [
+            SURVEY_INPUT_COMPANY: [
                 MessageHandler(Filters.text | ~Filters.command, input_company),
             ],
-            SURVAY_INPUT_JOB: [
+            SURVEY_INPUT_JOB: [
                 MessageHandler(Filters.text | ~Filters.command, input_job),
             ],
-            SURVAY_CONFIRM: [
+            SURVEY_CONFIRM: [
                 MessageHandler(Filters.regex('^Да, всё верно$'),
-                               save_survay),
+                               save_survey),
                 MessageHandler(Filters.regex('^Нет, давай заново$'),
-                               start_survay),
+                               start_survey),
             ],
         },
         fallbacks=[
-            MessageHandler(Filters.regex('^Заполнить анкету$'), start_survay),
+            MessageHandler(Filters.regex('^Заполнить анкету$'), start_survey),
         ],
         map_to_parent={
             ConversationHandler.END: MEET_CHOICE,
@@ -532,7 +564,7 @@ def main() -> None:
                                start_meet),
             ],
             MEET_CHOICE: [
-                survay_conv_handler,
+                survey_conv_handler,
                 MessageHandler(Filters.regex('^Подобрать знакомство$'),
                                show_person),
                 MessageHandler(Filters.regex(f'^{MAIN_MENU_BUTTON_CAPTION}$'),
