@@ -314,8 +314,19 @@ def answer_the_question(update: Update, context: CallbackContext) -> int:
     question.answer = answer
     question.is_active = False
     question.save()
+    text = textwrap.dedent(
+        f'''
+        
+        Получен ответ на вопрос:
+        {question}
+        
+        Ответ:
+        {answer}
+        
+        '''
+     )
 
-    context.bot.send_message(chat_id=listener_id, text=answer)
+    context.bot.send_message(chat_id=listener_id, text=text)
     update.message.reply_text(
         "Ответ отправлен. Нажмите на кнопку 'Следующий вопрос'")
 
