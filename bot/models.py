@@ -15,12 +15,20 @@ class Profile(models.Model):
     def is_speaker(self):
         return self.presentations.exists()
 
+    class Meta:
+        verbose_name = 'профиль'
+        verbose_name_plural = 'профили'
+
     def __str__(self) -> str:
         return f'{self.name} @{self.telegram_username}'
 
 
 class EventGroup(models.Model):
     title = models.CharField('название', max_length=250)
+
+    class Meta:
+        verbose_name = 'группа события'
+        verbose_name_plural = 'группы событий'
 
     def __str__(self) -> str:
         return f'{self.title}'
@@ -37,6 +45,10 @@ class Event(models.Model):
     )
     is_presentation = models.BooleanField('это доклад')
 
+    class Meta:
+        verbose_name = 'событие'
+        verbose_name_plural = 'события'
+
     def __str__(self) -> str:
         return f'{self.time_from:%H:%M}-{self.time_to:%H:%M} {self.title}'
 
@@ -52,6 +64,10 @@ class Presentation(models.Model):
         related_name='presentations',
     )
 
+    class Meta:
+        verbose_name = 'презентация'
+        verbose_name_plural = 'презентации'
+
     def __str__(self) -> str:
         return f'{self.title}'
 
@@ -63,6 +79,10 @@ class Question(models.Model):
     listener = models.ForeignKey(Profile, on_delete=models.CASCADE)
     answer = models.TextField('ответ на вопрос', blank=True)
     is_active = models.BooleanField('актуальный', default=True)
+
+    class Meta:
+        verbose_name = 'вопрос'
+        verbose_name_plural = 'вопросы'
 
     def __str__(self) -> str:
         return f'{self.presentation} - {self.listener}'
