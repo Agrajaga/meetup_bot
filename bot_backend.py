@@ -318,7 +318,7 @@ def answer_the_question(update: Update, context: CallbackContext) -> int:
         f'''
         
         Получен ответ на вопрос:
-        {question}
+        {question.text}
         
         Ответ:
         {answer}
