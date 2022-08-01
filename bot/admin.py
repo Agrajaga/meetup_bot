@@ -1,7 +1,8 @@
 import os
 
 from django.contrib import admin
-from telegram import Bot
+from telegram import Bot,error
+
 
 from .models import (Event, EventGroup, MailingList, Presentation, Profile,
                      Question)
@@ -34,7 +35,10 @@ class MailingListAdmin(admin.ModelAdmin):
         for newsletter in queryset:
             message = newsletter.message
             for recipient in recipients:
-                bot.send_message(chat_id=recipient, text=message)
+                try:
+                    bot.send_message(chat_id=recipient, text=message)
+                except error.BadRequest:
+                    print(f"Пользователь {recipient} не найден")
 
 
 admin.site.register(EventGroup)
