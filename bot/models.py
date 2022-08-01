@@ -1,4 +1,3 @@
-from email import message
 from django.db import models
 
 
@@ -7,6 +6,10 @@ class Profile(models.Model):
     telegram_id = models.CharField('телеграм ИД', max_length=20)
     telegram_username = models.CharField('телеграм имя', max_length=50)
     is_speaker = models.BooleanField('докладчик', default=False)
+    company = models.CharField(
+        'компания', max_length=150, blank=True, null=True)
+    job = models.CharField('должность', max_length=150, blank=True, null=True)
+    ready_meet = models.BooleanField('готов знакомиться', default=False)
 
     def __str__(self) -> str:
         return f'{self.name} @{self.telegram_username}'
@@ -70,4 +73,4 @@ class MailingList(models.Model):
         verbose_name_plural = 'рассылки'
 
     def __str__(self) -> str:
-        return f"{self.name}"
+        return f'{self.name}'
